@@ -39,43 +39,41 @@ def main(args):
 
     with open(args.dataset_info_path, "r") as f:
         dataset_info = json.load(f)
-    if arg.spec_type:
+    if args.spec_type:
         MULTIPLETS = dataset_info["MULTIPLETS"]
         NUM_H = dataset_info["NUM_H"]
         model = PeakGraphModule(mult_class_num=len(MULTIPLETS), nH_class_num=len(NUM_H), 
                                 in_dim=7, hidden_dim=32)
         print(model)
-code_test = True
-# code_test = False
-if args.code_test:
-    wandb_logger = None
-    fast_dev_run = 2
-else:
-    exp_name = "test_nmr_graph_nHcls"
-    exp_save_path = "./exp/exp_example"
 
-    wandb_logger = WandbLogger(
-                project=args.wandb_project,
-                name=exp_name,
-                save_dir=exp_save_path
-            )
-    fast_dev_run = False
 
-trainer = pl.Trainer(
-    accelerator='gpu',
-    devices=1,
-    max_epochs=50,
-    logger=wandb_logger,
-    fast_dev_run=fast_dev_run
-)
-    
-    
-trainer.fit(model, train_dataloader, val_dataloader)
-trainer.test(dataloaders=test_dataloader)
+    if args.code_test:
+        wandb_logger = None
+        fast_dev_run = 2
+    else:
+        wandb_logger = WandbLogger(
+                    project=args.wandb_project,
+                    name=get_formatted_exp_name(args.exp_name),
+                    save_dir=args.exp_save_path
+                )
+        fast_dev_run = False
+
+    trainer = pl.Trainer(
+        accelerator='gpu',
+        devices=1,
+        max_epochs=50,
+        logger=wandb_logger,
+        fast_dev_run=fast_dev_run
+    )
+        
+        
+    trainer.fit(model, train_dataloader, val_dataloader)
+    trainer.test(dataloaders=test_dataloader)
 
 if __name__ == "__main___":
     parser = ArgumentParser()
-    parser.add_argument('--exp_name', type=str, default='')
+    parser.add_argument('--exp_name', type=str, required=True)
+    parser.add_argument('--exp_save_path', type=str, default='../exp')
     parser.add_argument('--dataset_path', type=str, required=True)
     parser.add_argument('--dataset_info_path', type=str, required=True)
     parser.add_argument('--spec_type', type=str, choices=['h_nmr', 'c_nmr', 'ms'], default='h_nmr')
