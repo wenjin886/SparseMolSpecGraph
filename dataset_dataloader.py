@@ -175,6 +175,6 @@ def process_origin_data(data_dir, save_dir, dataset_name):
 
 
 if __name__ == "__main__":
-    data_dir = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/multimodal-spectroscopic-dataset/data/example_data"
-    save_dir = "./"
+    data_dir = "../../multimodal-spectroscopic-dataset/data/example_data"
+    save_dir = "../example_data"
     process_origin_data(data_dir, save_dir, 'example_hnmr')
