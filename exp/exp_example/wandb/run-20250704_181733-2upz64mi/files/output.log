@@ -1,0 +1,158 @@
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+
+  | Name                 | Type                   | Params | Mode
+------------------------------------------------------------------------
+0 | node_feature_encoder | NodeFeatureEncoder     | 1.3 K  | train
+1 | encoder              | NMRGraphEncoder        | 55.0 K | train
+2 | predictor            | MultiTaskNodePredictor | 8.2 K  | train
+------------------------------------------------------------------------
+64.5 K    Trainable params
+0         Non-trainable params
+64.5 K    Total params
+0.258     Total estimated model params size (MB)
+56        Modules in train mode
+0         Modules in eval mode
+Sanity Checking DataLoader 0:   0%|                                                                                                                                  | 0/2 [00:00<?, ?it/s]
+/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:475: Your `val_dataloader`'s sampler has shuffling enabled, it is strongly recommended that you turn shuffling off for val/test dataloaders.
+/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:424: The 'val_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=17` in the `DataLoader` to improve performance.
+Traceback (most recent call last):
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/call.py", line 47, in _call_and_handle_interrupt
+    return trainer_fn(*args, **kwargs)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/trainer.py", line 574, in _fit_impl
+    self._run(model, ckpt_path=ckpt_path)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/trainer.py", line 981, in _run
+    results = self._run_stage()
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/trainer.py", line 1023, in _run_stage
+    self._run_sanity_check()
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/trainer.py", line 1052, in _run_sanity_check
+    val_loop.run()
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/loops/utilities.py", line 178, in _decorator
+    return loop_run(self, *args, **kwargs)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/loops/evaluation_loop.py", line 135, in run
+    self._evaluation_step(batch, batch_idx, dataloader_idx, dataloader_iter)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/loops/evaluation_loop.py", line 396, in _evaluation_step
+    output = call._call_strategy_hook(trainer, hook_name, *step_args)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/call.py", line 319, in _call_strategy_hook
+    output = fn(*args, **kwargs)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/strategies/strategy.py", line 411, in validation_step
+    return self.lightning_module.validation_step(*args, **kwargs)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/code/model.py", line 202, in validation_step
+    pred = self(batch)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/code/model.py", line 160, in forward
+    node_features = self.node_feature_encoder(data.centroids, data.peak_widths, data.nH, data.multiplets)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/code/model.py", line 44, in forward
+    x = torch.cat([centroid.unsqueeze(-1), width.unsqueeze(-1), nH.unsqueeze(-1), mult_vec], dim=-1)  # [N, 3 + 4]
+RuntimeError: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1.
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/code/train.py", line 57, in <module>
+    trainer.fit(model, train_dataloader, val_dataloader)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/trainer.py", line 538, in fit
+    call._call_and_handle_interrupt(
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/call.py", line 68, in _call_and_handle_interrupt
+    trainer._teardown()
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/trainer.py", line 1004, in _teardown
+    self.strategy.teardown()
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/strategies/strategy.py", line 535, in teardown
+    self.lightning_module.cpu()
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/lightning_fabric/utilities/device_dtype_mixin.py", line 82, in cpu
+    return super().cpu()
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 967, in cpu
+    return self._apply(lambda t: t.cpu())
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 810, in _apply
+    module._apply(fn)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 810, in _apply
+    module._apply(fn)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 833, in _apply
+    param_applied = fn(param)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 967, in <lambda>
+    return self._apply(lambda t: t.cpu())
+RuntimeError: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1.
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+Traceback (most recent call last):
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/call.py", line 47, in _call_and_handle_interrupt
+    return trainer_fn(*args, **kwargs)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/trainer.py", line 574, in _fit_impl
+    self._run(model, ckpt_path=ckpt_path)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/trainer.py", line 981, in _run
+    results = self._run_stage()
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/trainer.py", line 1023, in _run_stage
+    self._run_sanity_check()
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/trainer.py", line 1052, in _run_sanity_check
+    val_loop.run()
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/loops/utilities.py", line 178, in _decorator
+    return loop_run(self, *args, **kwargs)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/loops/evaluation_loop.py", line 135, in run
+    self._evaluation_step(batch, batch_idx, dataloader_idx, dataloader_iter)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/loops/evaluation_loop.py", line 396, in _evaluation_step
+    output = call._call_strategy_hook(trainer, hook_name, *step_args)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/call.py", line 319, in _call_strategy_hook
+    output = fn(*args, **kwargs)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/strategies/strategy.py", line 411, in validation_step
+    return self.lightning_module.validation_step(*args, **kwargs)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/code/model.py", line 202, in validation_step
+    pred = self(batch)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/code/model.py", line 160, in forward
+    node_features = self.node_feature_encoder(data.centroids, data.peak_widths, data.nH, data.multiplets)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1518, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1527, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/code/model.py", line 44, in forward
+    x = torch.cat([centroid.unsqueeze(-1), width.unsqueeze(-1), nH.unsqueeze(-1), mult_vec], dim=-1)  # [N, 3 + 4]
+RuntimeError: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1.
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/code/train.py", line 57, in <module>
+    trainer.fit(model, train_dataloader, val_dataloader)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/trainer.py", line 538, in fit
+    call._call_and_handle_interrupt(
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/call.py", line 68, in _call_and_handle_interrupt
+    trainer._teardown()
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/trainer.py", line 1004, in _teardown
+    self.strategy.teardown()
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/strategies/strategy.py", line 535, in teardown
+    self.lightning_module.cpu()
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/lightning_fabric/utilities/device_dtype_mixin.py", line 82, in cpu
+    return super().cpu()
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 967, in cpu
+    return self._apply(lambda t: t.cpu())
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 810, in _apply
+    module._apply(fn)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 810, in _apply
+    module._apply(fn)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 833, in _apply
+    param_applied = fn(param)
+  File "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 967, in <lambda>
+    return self._apply(lambda t: t.cpu())
+RuntimeError: CUDA error: device-side assert triggered
+CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1.
+Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.

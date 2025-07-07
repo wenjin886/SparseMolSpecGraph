@@ -1,0 +1,19 @@
+{"time":"2025-07-04T18:23:28.402891346+01:00","level":"INFO","msg":"using version","core version":"0.18.7"}
+{"time":"2025-07-04T18:23:28.402943727+01:00","level":"INFO","msg":"created symlink","path":"exp/exp_example/wandb/run-20250704_182328-bug191n3/logs/debug-core.log"}
+{"time":"2025-07-04T18:23:28.510683397+01:00","level":"INFO","msg":"created new stream","id":"bug191n3"}
+{"time":"2025-07-04T18:23:28.510719317+01:00","level":"INFO","msg":"stream: started","id":"bug191n3"}
+{"time":"2025-07-04T18:23:28.510736215+01:00","level":"INFO","msg":"writer: Do: started","stream_id":"bug191n3"}
+{"time":"2025-07-04T18:23:28.510739638+01:00","level":"INFO","msg":"handler: started","stream_id":"bug191n3"}
+{"time":"2025-07-04T18:23:28.510747952+01:00","level":"INFO","msg":"sender: started","stream_id":"bug191n3"}
+{"time":"2025-07-04T18:23:29.095885348+01:00","level":"INFO","msg":"Starting system monitor"}
+{"time":"2025-07-04T18:23:29.659499436+01:00","level":"INFO","msg":"stream: closing","id":"bug191n3"}
+{"time":"2025-07-04T18:23:29.6595328+01:00","level":"INFO","msg":"Stopping system monitor"}
+{"time":"2025-07-04T18:23:29.659891993+01:00","level":"INFO","msg":"Stopped system monitor"}
+{"time":"2025-07-04T18:23:29.816756172+01:00","level":"WARN","msg":"No job ingredients found, not creating job artifact"}
+{"time":"2025-07-04T18:23:29.81677401+01:00","level":"WARN","msg":"No source type found, not creating job artifact"}
+{"time":"2025-07-04T18:23:29.81678098+01:00","level":"INFO","msg":"sender: sendDefer: no job artifact to save"}
+{"time":"2025-07-04T18:23:30.238901727+01:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-07-04T18:23:30.426628227+01:00","level":"INFO","msg":"handler: closed","stream_id":"bug191n3"}
+{"time":"2025-07-04T18:23:30.426652947+01:00","level":"INFO","msg":"sender: closed","stream_id":"bug191n3"}
+{"time":"2025-07-04T18:23:30.426648083+01:00","level":"INFO","msg":"writer: Close: closed","stream_id":"bug191n3"}
+{"time":"2025-07-04T18:23:30.426827814+01:00","level":"INFO","msg":"stream: closed","id":"bug191n3"}

@@ -1,0 +1,36 @@
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+
+  | Name                 | Type                   | Params | Mode
+------------------------------------------------------------------------
+0 | node_feature_encoder | NodeFeatureEncoder     | 1.5 K  | train
+1 | encoder              | NMRGraphEncoder        | 55.0 K | train
+2 | predictor            | MultiTaskNodePredictor | 8.2 K  | train
+------------------------------------------------------------------------
+64.6 K    Trainable params
+0         Non-trainable params
+64.6 K    Total params
+0.258     Total estimated model params size (MB)
+57        Modules in train mode
+0         Modules in eval mode
+Epoch 49: 100%|██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 6/6 [00:00<00:00, 34.86it/s, v_num=ilme]
+/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:475: Your `val_dataloader`'s sampler has shuffling enabled, it is strongly recommended that you turn shuffling off for val/test dataloaders.
+/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:424: The 'val_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=17` in the `DataLoader` to improve performance.
+/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:424: The 'train_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=17` in the `DataLoader` to improve performance.
+/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/loops/fit_loop.py:298: The number of training batches (6) is smaller than the logging interval Trainer(log_every_n_steps=50). Set a lower value for log_every_n_steps if you want to see logs for the training epoch.
+Testing DataLoader 0: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 6/6 [00:00<00:00, 117.42it/s]
+`Trainer.fit` stopped: `max_epochs=50` reached.
+/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/connectors/checkpoint_connector.py:145: `.test(ckpt_path=None)` was called without a model. The best model of the previous `fit` call will be used. You can pass `.test(ckpt_path='best')` to use the best model or `.test(ckpt_path='last')` to use the last model. If you pass a value, this warning will be silenced.
+Restoring states from the checkpoint path at ./exp/exp_example/NMR-Graph/9lhyilme/checkpoints/epoch=49-step=300.ckpt
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+Loaded model weights from the checkpoint at ./exp/exp_example/NMR-Graph/9lhyilme/checkpoints/epoch=49-step=300.ckpt
+/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:475: Your `test_dataloader`'s sampler has shuffling enabled, it is strongly recommended that you turn shuffling off for val/test dataloaders.
+/rds/projects/c/chenlv-ai-and-chemistry/wuwj/anaconda3/envs/mdm310/lib/python3.10/site-packages/pytorch_lightning/trainer/connectors/data_connector.py:424: The 'test_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=17` in the `DataLoader` to improve performance.
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+       Test metric             DataLoader 0
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+        test_loss            7.164082050323486
+   test_loss_centroid       1.0875635147094727
+     test_loss_mult          2.162635087966919
+      test_loss_nH          3.9099743366241455
+     test_loss_width       0.003908306825906038
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
