@@ -14,6 +14,9 @@ from datetime import datetime
 import random
 from model import PeakGraphModule
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="torch_geometric")
+
 
 def get_formatted_exp_name(exp_name, resume=False):
     formatted_time = datetime.now().strftime("%H-%M-%d-%m-%Y")
