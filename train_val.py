@@ -26,6 +26,7 @@ def main(args):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
     torch.set_float32_matmul_precision(args.precision)
 
+    
     print(f"Loading dataset: {args.dataset_path}")
     dataset = torch.load(args.dataset_path)
     num_data = len(dataset)

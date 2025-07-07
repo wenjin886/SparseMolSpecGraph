@@ -4,7 +4,9 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 import numpy as np
 import os
+import re
 import json
+from tqdm import tqdm
 
 def fully_connected_edge_index(num_nodes):
     # 生成 [0, 0, ..., 1, 1, ..., n-1, n-1]
@@ -111,16 +113,14 @@ def create_masked_data(data, mask_ratio=0.1):
     return masked_data
 
 def process_origin_data(data_dir, save_dir, dataset_name):
-    file_list = sorted(os.listdir(data_dir))
-    print(file_list)
-
+    """
+    Now just for H NMR spectra
+    """
+    file_list = os.listdir(data_dir)
+    file_list.sort(key=lambda x: int(re.search(r'\d+', x).group()))
+    # file_list = file_list[:2]
+    
     data_df = pd.DataFrame()
-    for file in file_list:
-        data_i = pd.read_parquet(os.path.join(data_dir, file))
-        print(data_i)
-        data_df = pd.concat([data_df, data_i])
-    print(data_df)
-
     # get dataset info
     MULTIPLETS_LIST = []
     NUM_H_LIST = []
@@ -129,15 +129,22 @@ def process_origin_data(data_dir, save_dir, dataset_name):
     all_peak_widths = []
     num_peaks = []
 
-    for id, row in data_df.iterrows():
-        num_peaks.append(len(row['h_nmr_peaks']))
-        for peak in row['h_nmr_peaks']:
-            if peak['category'] not in MULTIPLETS_LIST:
-                MULTIPLETS_LIST.append(peak['category'])
-            if peak['nH'] not in NUM_H_LIST:
-                NUM_H_LIST.append(peak['nH'])
-            all_centroids.append(float(peak['centroid']))
-            all_peak_widths.append(float(peak['rangeMax'])-float(peak['rangeMin']))
+    for file in tqdm(file_list):
+        data_i = pd.read_parquet(os.path.join(data_dir, file))
+        print(data_i)
+        data_df = pd.concat([data_df, data_i[['h_nmr_peaks', 'smiles']]])
+        
+
+        for id, row in tqdm(data_i.iterrows(), total=len(data_i)):
+            num_peaks.append(len(row['h_nmr_peaks']))
+            for peak in row['h_nmr_peaks']:
+                if peak['category'] not in MULTIPLETS_LIST:
+                    MULTIPLETS_LIST.append(peak['category'])
+                if peak['nH'] not in NUM_H_LIST:
+                    NUM_H_LIST.append(peak['nH'])
+                all_centroids.append(float(peak['centroid']))
+                all_peak_widths.append(float(peak['rangeMax'])-float(peak['rangeMin']))
+    print(data_df)
 
     MULTIPLETS_LIST = sorted(MULTIPLETS_LIST, key=lambda x: (len(x), x))
     global MULTIPLETS
@@ -175,6 +182,6 @@ def process_origin_data(data_dir, save_dir, dataset_name):
 
 
 if __name__ == "__main__":
-    data_dir = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/multimodal-spectroscopic-dataset/data/example_data"
-    save_dir = "./"
-    process_origin_data(data_dir, save_dir, 'example_hnmr')
+    data_dir = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/multimodal_spectroscopic_dataset"
+    save_dir = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr"
+    process_origin_data(data_dir, save_dir, 'h_nmr')
