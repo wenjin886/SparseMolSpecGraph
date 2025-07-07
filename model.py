@@ -125,7 +125,7 @@ class MultiTaskNodePredictor(nn.Module):
         self.fc_mult = nn.Linear(node_dim // 2, mult_class_num)  # multiplicity (classification)
 
     def forward(self, masked_node_embeddings, graph_features, masked_node_batch):
-        num_masked_nodes = masked_node_embeddings.size(0)
+        # num_masked_nodes = masked_node_embeddings.size(0)
         
         # 根据batch信息为每个mask节点分配对应的图特征
         graph_features_per_masked_node = graph_features[masked_node_batch]
@@ -166,10 +166,14 @@ class PeakGraphModule(pl.LightningModule):
 
         self.warm_up_step = warm_up_step
         self.lr = lr
-
-    def forward(self, data):
+    
+    def encode(self, data):
         node_features = self.node_feature_encoder(data.centroids, data.peak_widths, data.nH, data.multiplets)
         node_embeddings, graph_features = self.encoder(node_features, data.edge_index, data.batch, data.edge_attr)
+        return node_embeddings, graph_features
+
+    def forward(self, data):
+        node_embeddings, graph_features = self.encode(data)
         
         # 传入节点特征和图特征
         masked_node_batch = data.batch[data.masked_node_index]
