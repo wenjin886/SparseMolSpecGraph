@@ -49,10 +49,12 @@ class NodeFeatureEncoder(nn.Module):
         return self.fc(x)
 
 class NMRGraphEncoder(nn.Module):
-    def __init__(self, in_dim, hidden_dim, num_layers=2, num_heads=2, edge_dim=1):
+    def __init__(self, in_node_dim, hidden_node_dim, 
+                 graph_dim,
+                 num_layers, num_heads, edge_dim=1):
         super().__init__()
-        self.in_dim = in_dim
-        self.hidden_dim = hidden_dim
+        self.in_node_dim = in_node_dim
+        self.hidden_node_dim = hidden_node_dim
         self.num_layers = num_layers
         
         # 动态创建 TransformerConv 层
@@ -60,22 +62,23 @@ class NMRGraphEncoder(nn.Module):
         
         # 第一层：in_dim -> hidden_dim
         self.conv_layers.append(
-            TransformerConv(in_dim, hidden_dim, heads=num_heads, edge_dim=edge_dim)
+            TransformerConv(in_node_dim, hidden_node_dim, heads=num_heads, edge_dim=edge_dim)
         )
         
-        # 中间层：hidden_dim * 2 -> hidden_dim (因为 heads=2)
+        # 中间层：hidden_dim * num_heads -> hidden_dim
         for _ in range(1, num_layers):
             self.conv_layers.append(
-                TransformerConv(hidden_dim * num_heads, hidden_dim, heads=num_heads, edge_dim=edge_dim)
+                TransformerConv(hidden_node_dim * num_heads, hidden_node_dim, heads=num_heads, edge_dim=edge_dim)
             )
         
         # 图级特征提取网络
+        
         self.graph_encoder = nn.Sequential(
-            nn.Linear(hidden_dim * 2, hidden_dim),
+            nn.Linear(hidden_node_dim * num_heads, hidden_node_dim * num_heads),
             nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.Linear(hidden_node_dim * num_heads, hidden_node_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim // 2, hidden_dim // 4)  # 图级特征维度
+            nn.Linear(hidden_node_dim, graph_dim)
         )
 
     def forward(self, x, edge_index, batch, edge_attr=None):
@@ -94,6 +97,7 @@ class NMRGraphEncoder(nn.Module):
         
         # 图级特征：使用 global_mean_pool 聚合所有节点
         graph_embeddings = global_mean_pool(x, batch)
+        print('graph_embeddings', graph_embeddings.shape)
         graph_features = self.graph_encoder(graph_embeddings)
         
         return node_embeddings, graph_features
@@ -141,21 +145,27 @@ class MultiTaskNodePredictor(nn.Module):
 
 class PeakGraphModule(pl.LightningModule):
     def __init__(self, mult_class_num, nH_class_num, 
-                 in_dim=7, hidden_dim=32, num_layers=4, num_heads=2):
+                 in_node_dim=16, hidden_node_dim=64, 
+                 graph_dim=32,
+                 num_layers=4, num_heads=4,
+                 warm_up_step=1000, lr=1):
         """
         args:
-            in_dim: 输入维度 of nodes
-            hidden_dim: 隐藏层维度 of nodes
-            num_layers: 编码器层数
             mult_class_num: len(MULTIPLETS_LIST)
+            nH_class_num: len(NUM_H_LIST)
+            in_node_dim: graph encoder 中 node feature 的输入维度
+            hidden_dhidden_node_dimim: graph encoder 中 node feature 的隐藏层维度
+            num_layers: graph encoder 中 编码器层数
+            num_heads: graph encoder 中 多头注意力机制的 head 数
         """
         super().__init__()
         self.save_hyperparameters()
-        self.node_feature_encoder = NodeFeatureEncoder(mult_class_num, nH_class_num, in_dim)
-        self.encoder = NMRGraphEncoder(in_dim, hidden_dim, num_layers, num_heads)
-        # 修改预测器，传入图特征维度
-        graph_dim = hidden_dim // 4  # 与 NMRGraphEncoder 中的图特征维度一致
-        self.predictor = MultiTaskNodePredictor(hidden_dim*num_heads, graph_dim, mult_class_num, nH_class_num)
+        self.node_feature_encoder = NodeFeatureEncoder(mult_class_num, nH_class_num, out_dim=in_node_dim)
+        self.encoder = NMRGraphEncoder(in_node_dim, hidden_node_dim, graph_dim, num_layers, num_heads)
+        self.predictor = MultiTaskNodePredictor(hidden_node_dim*num_heads, graph_dim, mult_class_num, nH_class_num)
+
+        self.warm_up_step = warm_up_step
+        self.lr = lr
 
     def forward(self, data):
         node_features = self.node_feature_encoder(data.centroids, data.peak_widths, data.nH, data.multiplets)
@@ -163,17 +173,13 @@ class PeakGraphModule(pl.LightningModule):
         
         # 传入节点特征和图特征
         masked_node_batch = data.batch[data.masked_node_index]
-        # print("masked_node_batch", masked_node_batch)
         pred = self.predictor(node_embeddings[data.masked_node_index], graph_features, masked_node_batch)
         return pred
     
     def compute_multitask_loss(self, pred, target, weight_dict=None):
         loss_centroid = F.mse_loss(pred["centroid"].squeeze(), target["centroid"])
         loss_width = F.mse_loss(pred["width"].squeeze(), target["width"])
-        # print(target["nH"])
-        # print(target["multiplet"])
         loss_nH = F.cross_entropy(pred["nH"], target["nH"])
-        
         loss_mult = F.cross_entropy(pred["multiplet_logits"], target["multiplet"])
 
         if weight_dict is None:
@@ -186,6 +192,15 @@ class PeakGraphModule(pl.LightningModule):
             weight_dict["multiplet"] * loss_mult
         )
         return total_loss, {"loss_centroid": loss_centroid, "loss_width": loss_width, "loss_nH": loss_nH, "loss_mult": loss_mult}
+    
+    def compute_accuracy(self, pred, target):
+        print('pred nH', pred["nH"].shape, 'target nH', target["nH"].shape)
+        print('pred mult', pred["multiplet_logits"].shape, 'target mult', target["multiplet"].shape)
+        pred_nH = torch.argmax(pred["nH"], dim=-1)
+        acc_nH = (pred_nH == target["nH"]).float().mean()
+        pred_mult = torch.argmax(pred["multiplet_logits"], dim=-1)
+        acc_mult = (pred_mult == target["multiplet"]).float().mean()
+        return acc_nH, acc_mult
     
     def training_step(self, batch, batch_idx):
         
@@ -212,6 +227,9 @@ class PeakGraphModule(pl.LightningModule):
         self.log("val_loss_width", loss_dic["loss_width"], batch_size=batch_size)
         self.log("val_loss_nH", loss_dic["loss_nH"], batch_size=batch_size)
         self.log("val_loss_mult", loss_dic["loss_mult"], batch_size=batch_size)
+        acc_nH, acc_mult = self.compute_accuracy(pred, batch.masked_node_target)
+        self.log("val_acc_nH", acc_nH, batch_size=batch_size)
+        self.log("val_acc_mult", acc_mult, batch_size=batch_size)
         return loss
     
     def test_step(self, batch, batch_idx):
@@ -225,7 +243,37 @@ class PeakGraphModule(pl.LightningModule):
         self.log("test_loss_width", loss_dic["loss_width"], batch_size=batch_size)
         self.log("test_loss_nH", loss_dic["loss_nH"], batch_size=batch_size)
         self.log("test_loss_mult", loss_dic["loss_mult"], batch_size=batch_size)
+        acc_nH, acc_mult = self.compute_accuracy(pred, batch.masked_node_target)
+        self.log("test_acc_nH", acc_nH, batch_size=batch_size)
+        self.log("test_acc_mult", acc_mult, batch_size=batch_size)
         return loss
 
+    
+    
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=1e-3)
+        # 使用 AdamW 优化器
+        optimizer = torch.optim.AdamW(
+            self.parameters(),
+            lr=self.lr,
+            amsgrad=True,
+            weight_decay=1e-12
+        )
+
+        def rate(step):
+           
+            if step == 0:
+                step = 1
+            lr_scale = 1 * (
+                512 ** (-0.5) * min(step ** (-0.5), step * self.warm_up_step ** (-1.5))
+            )
+
+            return lr_scale
+
+        scheduler = torch.optim.lr_scheduler.LambdaLR(
+            optimizer,
+            lr_lambda=rate
+        )
+
+        # 返回优化器和调度器
+        return [optimizer], [{"scheduler": scheduler, "interval": "step"}]
+    
