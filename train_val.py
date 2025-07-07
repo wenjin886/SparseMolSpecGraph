@@ -1,6 +1,7 @@
 import os
 os.environ.pop("SLURM_NTASKS", None)
 os.environ["WANDB_DIR"] = "./exp"
+import os.path as osp
 
 import torch
 import pytorch_lightning as pl
@@ -10,7 +11,7 @@ from torch_geometric.loader import DataLoader
 import json
 from argparse import ArgumentParser
 from datetime import datetime
-
+import random
 from model import PeakGraphModule
 
 
@@ -28,12 +29,37 @@ def main(args):
 
     
     print(f"Loading dataset: {args.dataset_path}")
-    dataset = torch.load(args.dataset_path)
-    num_data = len(dataset)
+    assert osp.exists(args.dataset_path), f"Dataset path does not exist: {args.dataset_path}"
+    if osp.isfile(args.dataset_path):
+        dataset = torch.load(args.dataset_path)
+        num_data = len(dataset)
+        random.seed(args.seed)
+        random.shuffle(dataset)
+        train_set = dataset[:int(0.85*num_data)]
+        val_set = dataset[int(0.85*num_data):int(0.9*num_data)]
+        test_set = dataset[int(0.9*num_data):]
 
-    train_set = dataset[:int(0.85*num_data)]
-    val_set = dataset[int(0.85*num_data):int(0.9*num_data)]
-    test_set = dataset[int(0.9*num_data):]
+        save_dir = osp.join(osp.pardir(args.dataset_path), "train_val_test_set")
+        if not osp.exists(save_dir):
+            os.makedirs(save_dir)
+        torch.save(train_set, osp.join(save_dir, "train_set.pt"))
+        torch.save(val_set, osp.join(save_dir, "val_set.pt"))
+        torch.save(test_set, osp.join(save_dir, "test_set.pt"))
+
+        with open(osp.join(save_dir, "dataset_info.json"), "w") as f:
+            info = {
+                "split_dataset_from": args.dataset_path,
+                "train_set": (len(train_set), 0.85),
+                "val_set": (len(val_set), 0.05),
+                "test_set": (len(test_set), 0.1),
+            }
+            json.dump(info, f)
+
+    elif osp.isdir(args.dataset_path):
+        train_set = torch.load(osp.join(args.dataset_path, "train_set.pt"))
+        val_set = torch.load(osp.join(args.dataset_path, "val_set.pt"))
+        test_set = torch.load(osp.join(args.dataset_path, "test_set.pt"))
+
 
     train_dataloader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=17)
     val_dataloader = DataLoader(val_set, batch_size=args.batch_size, shuffle=True)
@@ -110,7 +136,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--save_top_k', type=int, default=3)
     parser.add_argument('--save_every_n_epochs', type=int, default=1)
-    
+    parser.add_argument('--seed', type=int, default=42)
 
     parser.add_argument('--spec_type', type=str, choices=['h_nmr', 'c_nmr', 'ms'], default='h_nmr')
     parser.add_argument('--wandb_project', type=str, default='NMR-Graph')
