@@ -23,6 +23,35 @@ def get_formatted_exp_name(exp_name, resume=False):
         formatted_exp_name = f"{exp_name}_{formatted_time}"
     return formatted_exp_name
 
+def split_dataset(dataset_path, seed):
+    dataset = torch.load(dataset_path)
+    num_data = len(dataset)
+
+    print(f"Shuffling dataset with seed ({seed})...")
+    random.seed(seed)
+    random.shuffle(dataset)
+    print("Splitting...")
+    train_set = dataset[:int(0.85*num_data)]
+    val_set = dataset[int(0.85*num_data):int(0.9*num_data)]
+    test_set = dataset[int(0.9*num_data):]
+
+    save_dir = osp.join(osp.dirname(dataset_path), "train_val_test_set")
+    if not osp.exists(save_dir): os.makedir(save_dir)
+    print(f"Saving splitted dataset in {save_dir}")
+    torch.save(train_set, osp.join(save_dir, "train_set.pt"))
+    torch.save(val_set, osp.join(save_dir, "val_set.pt"))
+    torch.save(test_set, osp.join(save_dir, "test_set.pt"))
+
+    with open(osp.join(save_dir, "dataset_info.json"), "w") as f:
+        info = {
+            "split_dataset_from": args.dataset_path,
+            "train_set": (len(train_set), 0.85),
+            "val_set": (len(val_set), 0.05),
+            "test_set": (len(test_set), 0.1),
+        }
+        json.dump(info, f)
+    return train_set, val_set, test_set
+
 def main(args):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
     torch.set_float32_matmul_precision(args.precision)
@@ -31,30 +60,7 @@ def main(args):
     print(f"Loading dataset: {args.dataset_path}")
     assert osp.exists(args.dataset_path), f"Dataset path does not exist: {args.dataset_path}"
     if osp.isfile(args.dataset_path):
-        dataset = torch.load(args.dataset_path)
-        num_data = len(dataset)
-        random.seed(args.seed)
-        random.shuffle(dataset)
-        train_set = dataset[:int(0.85*num_data)]
-        val_set = dataset[int(0.85*num_data):int(0.9*num_data)]
-        test_set = dataset[int(0.9*num_data):]
-
-        save_dir = osp.join(osp.pardir(args.dataset_path), "train_val_test_set")
-        if not osp.exists(save_dir):
-            os.makedirs(save_dir)
-        torch.save(train_set, osp.join(save_dir, "train_set.pt"))
-        torch.save(val_set, osp.join(save_dir, "val_set.pt"))
-        torch.save(test_set, osp.join(save_dir, "test_set.pt"))
-
-        with open(osp.join(save_dir, "dataset_info.json"), "w") as f:
-            info = {
-                "split_dataset_from": args.dataset_path,
-                "train_set": (len(train_set), 0.85),
-                "val_set": (len(val_set), 0.05),
-                "test_set": (len(test_set), 0.1),
-            }
-            json.dump(info, f)
-
+        train_set, val_set, test_set = split_dataset(args.dataset_path, args.seed)
     elif osp.isdir(args.dataset_path):
         train_set = torch.load(osp.join(args.dataset_path, "train_set.pt"))
         val_set = torch.load(osp.join(args.dataset_path, "val_set.pt"))
