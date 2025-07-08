@@ -81,28 +81,28 @@ class NodeFeatureEmbedding(nn.Module):
 
 class NMRGraphEncoder(nn.Module):
     def __init__(self, in_node_dim, hidden_node_dim, 
-                 graph_dim,
+                #  graph_dim,
                  num_layers, num_heads, edge_dim=1):
         super().__init__()
         self.in_node_dim = in_node_dim
         self.hidden_node_dim = hidden_node_dim
         self.num_layers = num_layers
         
-        # 动态创建 TransformerConv 层
-        self.conv_layers = nn.ModuleList()
+        # # 动态创建 TransformerConv 层
+        # self.conv_layers = nn.ModuleList()
         
-        # 第一层：in_dim -> hidden_dim
-        self.conv_layers.append(
-            TransformerConv(in_node_dim, hidden_node_dim, heads=num_heads, edge_dim=edge_dim)
-        )
-        self.conv_layers.append(SublayerConnection(hidden_node_dim * num_heads, dropout=0.1))
+        # # 第一层：in_dim -> hidden_dim
+        # self.conv_layers.append(
+        #     TransformerConv(in_node_dim, hidden_node_dim, heads=num_heads, edge_dim=edge_dim)
+        # )
         
-        # 中间层：hidden_dim * num_heads -> hidden_dim
-        for _ in range(1, num_layers):
-            self.conv_layers.append(
-                TransformerConv(hidden_node_dim * num_heads, hidden_node_dim, heads=num_heads, edge_dim=edge_dim)
-            )
-            self.conv_layers.append(SublayerConnection(hidden_node_dim * num_heads, dropout=0.1))
+        # # 中间层：hidden_dim * num_heads -> hidden_dim
+        # for _ in range(1, num_layers):
+        #     self.conv_layers.append(
+        #         TransformerConv(hidden_node_dim * num_heads, hidden_node_dim, heads=num_heads, edge_dim=edge_dim)
+        #     )
+        self.conv_layers = clones(TransformerConv(in_node_dim, hidden_node_dim, heads=num_heads, edge_dim=edge_dim), num_layers)
+        self.sublayers = clones(SublayerConnection(size=in_node_dim, dropout=0.1), num_layers)
         
         self.linear = nn.Linear(in_node_dim, in_node_dim)
         
@@ -114,9 +114,10 @@ class NMRGraphEncoder(nn.Module):
 
         # 通过所有卷积层
         for i, conv in enumerate(self.conv_layers):
-            x = conv(x, edge_index, edge_attr)
-            if i < self.num_layers - 1:  # 除了最后一层，都加激活函数
-                x = F.relu(x)
+            # x = conv(x, edge_index, edge_attr)
+            # if i < self.num_layers - 1:  # 除了最后一层，都加激活函数
+            #     x = F.relu(x)
+            x = self.sublayers[i](x, lambda x: conv(x, edge_index, edge_attr))
         
         # 节点级特征
         node_embeddings = self.linear(x)
@@ -149,7 +150,7 @@ class MultiTaskNodePredictor(nn.Module):
 class PeakGraphModule(pl.LightningModule):
     def __init__(self, mult_class_num, nH_class_num, 
                  mult_embed_dim=16, nH_embed_dim=8, c_w_embed_dim=8,
-                 graph_dim=32,
+                #  graph_dim=32,
                 #  hidden_node_dim=64, 
                  num_layers=4, num_heads=4,
                  warm_up_step=1000, lr=1):
@@ -173,23 +174,23 @@ class PeakGraphModule(pl.LightningModule):
         print('in_node_dim of node feature encoder', in_node_dim)
         assert in_node_dim % num_heads == 0, "in_node_dim must be divisible by num_heads"
         hidden_node_dim = in_node_dim // num_heads
-        self.encoder = NMRGraphEncoder(in_node_dim, hidden_node_dim, graph_dim, num_layers, num_heads)
-        self.predictor = MultiTaskNodePredictor(hidden_node_dim*num_heads, graph_dim, mult_class_num, nH_class_num)
+        self.encoder = NMRGraphEncoder(in_node_dim, hidden_node_dim, num_layers, num_heads)
+        self.predictor = MultiTaskNodePredictor(in_node_dim, mult_class_num, nH_class_num)
 
         self.warm_up_step = warm_up_step
         self.lr = lr
     
     def encode(self, data):
         node_features = self.node_feature_encoder(data.centroids, data.peak_widths, data.nH, data.multiplets)
-        node_embeddings, graph_features = self.encoder(node_features, data.edge_index, data.batch, data.edge_attr)
-        return node_embeddings, graph_features
+        node_embeddings = self.encoder(node_features, data.edge_index, data.batch, data.edge_attr)
+        return node_embeddings
 
     def forward(self, data):
-        node_embeddings, graph_features = self.encode(data)
+        node_embeddings = self.encode(data)
         
         # 传入节点特征和图特征
         masked_node_batch = data.batch[data.masked_node_index]
-        pred = self.predictor(node_embeddings[data.masked_node_index], graph_features, masked_node_batch)
+        pred = self.predictor(node_embeddings[data.masked_node_index])
         return pred
     
     def compute_multitask_loss(self, pred, target, weight_dict=None):

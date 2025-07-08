@@ -66,9 +66,15 @@ def main(args):
     if osp.isfile(args.dataset_path):
         train_set, val_set, test_set = split_dataset(args.dataset_path, args.seed)
     elif osp.isdir(args.dataset_path):
-        train_set = torch.load(osp.join(args.dataset_path, "train_set.pt"))
-        val_set = torch.load(osp.join(args.dataset_path, "val_set.pt"))
-        test_set = torch.load(osp.join(args.dataset_path, "test_set.pt"))
+        if args.code_test:
+            print("Only load val set due to code test...")
+            train_set = torch.load(osp.join(args.dataset_path, "val_set.pt"))
+            val_set = train_set
+            test_set = train_set
+        else:
+            train_set = torch.load(osp.join(args.dataset_path, "train_set.pt"))
+            val_set = torch.load(osp.join(args.dataset_path, "val_set.pt"))
+            test_set = torch.load(osp.join(args.dataset_path, "test_set.pt"))
 
 
     train_dataloader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
@@ -82,8 +88,8 @@ def main(args):
         NUM_H = dataset_info["NUM_H"]
         model = PeakGraphModule(mult_class_num=len(MULTIPLETS), nH_class_num=len(NUM_H), 
                                 mult_embed_dim=32, nH_embed_dim=16, c_w_embed_dim=8,
-                                hidden_node_dim=128, 
-                                graph_dim=128, 
+                                # hidden_node_dim=128, 
+                                # graph_dim=128, 
                                 num_layers=4, num_heads=4,
                                 warm_up_step=args.warm_up_step, lr=args.lr)
         print(model)
