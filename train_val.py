@@ -81,10 +81,10 @@ def main(args):
         MULTIPLETS = dataset_info["MULTIPLETS"]
         NUM_H = dataset_info["NUM_H"]
         model = PeakGraphModule(mult_class_num=len(MULTIPLETS), nH_class_num=len(NUM_H), 
-                                mult_embed_dim=128, nH_embed_dim=64,
-                                in_node_dim=64, hidden_node_dim=64, 
-                                graph_dim=256, 
-                                num_layers=8, num_heads=4,
+                                mult_embed_dim=32, nH_embed_dim=16, c_w_embed_dim=8,
+                                hidden_node_dim=128, 
+                                graph_dim=128, 
+                                num_layers=6, num_heads=4,
                                 warm_up_step=args.warm_up_step, lr=args.lr)
         print(model)
 

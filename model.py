@@ -7,12 +7,15 @@ import pytorch_lightning as pl
 
 class NodeFeatureEncoder(nn.Module):
     def __init__(self, mult_class_num, nH_class_num, 
-                 mult_embed_dim=16, nH_embed_dim=8,
-                 out_dim=32, hidden_dim=64):
+                 c_w_embed_dim=8, mult_embed_dim=32, nH_embed_dim=16):
+                #  out_dim=32, hidden_dim=64):
         """
         args:
             mult_class_num: len(MULTIPLETS_LIST)
             nH_class_num: len(NUM_H)
+            c_w_embed_dim: 中心和宽度 embedding 维度
+            mult_embed_dim: 多重性 embedding 维度
+            nH_embed_dim: 氢原子数 embedding 维度
             out_dim: 输出维度 of nodes
             hidden_dim: 隐藏层维度 of nodes
         """
@@ -21,19 +24,23 @@ class NodeFeatureEncoder(nn.Module):
         # Embedding for multiplicity (e.g., s, d, t, q, m) and nH
         self.mult_embed = nn.Embedding(mult_class_num, mult_embed_dim)
         self.nH_embed = nn.Embedding(nH_class_num, nH_embed_dim)
-
+        self.c_w_embed = nn.Sequential(
+            nn.Linear(2, 2), # norm
+            nn.SiLU(),
+            nn.Linear(2, c_w_embed_dim*2)
+        )
 
         # Learnable normalization layer: applies per-feature scale and bias
-        all_feature_dim = 2 + mult_embed_dim + nH_embed_dim
-        self.feature_norm = nn.Linear(all_feature_dim, all_feature_dim)  # input: 2 float + (4 mult_embed + 4 mult_embed)
+        # all_feature_dim = c_w_embed_dim*2 + mult_embed_dim + nH_embed_dim
+        # self.feature_norm = nn.Linear(all_feature_dim, all_feature_dim)  # input: 2 float + (4 mult_embed + 4 mult_embed)
 
-        # Projection network to target embedding dim
-        self.fc = nn.Sequential(
-            nn.ReLU(),
-            nn.Linear(all_feature_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, out_dim)
-        )
+        # # Projection network to target embedding dim
+        # self.fc = nn.Sequential(
+        #     nn.ReLU(),
+        #     nn.Linear(all_feature_dim, hidden_dim),
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_dim, out_dim)
+        # )
 
     def forward(self, centroid, width, nH, multiplet):
         """
@@ -44,12 +51,13 @@ class NodeFeatureEncoder(nn.Module):
         # print('multiplet', type(multiplet), multiplet)
         mult_vec = self.mult_embed(multiplet)               
         nH_vec = self.nH_embed(nH)
-       
-        x = torch.cat([centroid.unsqueeze(-1), width.unsqueeze(-1), nH_vec,  mult_vec], dim=-1)  # [N,all_feature_dim]
+        c_w_vec = self.c_w_embed(torch.cat([centroid.unsqueeze(-1), width.unsqueeze(-1)], dim=-1))
+        x = torch.cat([c_w_vec, nH_vec,  mult_vec], dim=-1)  # [N,all_feature_dim]
+        return x
+        # x = torch.cat([centroid.unsqueeze(-1), width.unsqueeze(-1), nH_vec,  mult_vec], dim=-1)  # [N,all_feature_dim]
         # print('x', x.shape)
-
-        x = self.feature_norm(x)  # Learnable normalization
-        return self.fc(x)
+        # x = self.feature_norm(x)  # Learnable normalization
+        # return self.fc(x)
 
 class NMRGraphEncoder(nn.Module):
     def __init__(self, in_node_dim, hidden_node_dim, 
@@ -78,9 +86,9 @@ class NMRGraphEncoder(nn.Module):
         
         self.graph_encoder = nn.Sequential(
             nn.Linear(hidden_node_dim * num_heads, hidden_node_dim * num_heads),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Linear(hidden_node_dim * num_heads, hidden_node_dim),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Linear(hidden_node_dim, graph_dim)
         )
 
@@ -114,16 +122,16 @@ class MultiTaskNodePredictor(nn.Module):
         # 融合节点特征和图特征的网络
         self.fusion_network = nn.Sequential(
             nn.Linear(node_dim + graph_dim, node_dim),
-            nn.ReLU(),
-            nn.Linear(node_dim, node_dim // 2),
-            nn.ReLU(),
+            nn.SiLU(),
+            nn.Linear(node_dim, node_dim),
+            nn.SiLU(),
         )
         
         # 预测头
-        self.fc_centroid = nn.Linear(node_dim // 2, 1)         # ppm
-        self.fc_width = nn.Linear(node_dim // 2, 1)            # peak width
-        self.fc_nH = nn.Linear(node_dim // 2, nH_class_num)               # proton count
-        self.fc_mult = nn.Linear(node_dim // 2, mult_class_num)  # multiplicity (classification)
+        self.fc_centroid = nn.Linear(node_dim, 1)         # ppm
+        self.fc_width = nn.Linear(node_dim, 1)            # peak width
+        self.fc_nH = nn.Linear(node_dim, nH_class_num)               # proton count
+        self.fc_mult = nn.Linear(node_dim, mult_class_num)  # multiplicity (classification)
 
     def forward(self, masked_node_embeddings, graph_features, masked_node_batch):
         # num_masked_nodes = masked_node_embeddings.size(0)
@@ -146,9 +154,8 @@ class MultiTaskNodePredictor(nn.Module):
 
 class PeakGraphModule(pl.LightningModule):
     def __init__(self, mult_class_num, nH_class_num, 
-                 in_node_dim=16, hidden_node_dim=64, 
-                 mult_embed_dim=16, nH_embed_dim=8,
-                 graph_dim=32,
+                 mult_embed_dim=16, nH_embed_dim=8, c_w_embed_dim=8,
+                 hidden_node_dim=64, graph_dim=32,
                  num_layers=4, num_heads=4,
                  warm_up_step=1000, lr=1):
         """
@@ -156,15 +163,19 @@ class PeakGraphModule(pl.LightningModule):
             mult_class_num: len(MULTIPLETS_LIST)
             nH_class_num: len(NUM_H_LIST)
             in_node_dim: graph encoder 中 node feature 的输入维度
-            hidden_dhidden_node_dimim: graph encoder 中 node feature 的隐藏层维度
+            hidden_dim: graph encoder 中 node feature 的隐藏层维度
             num_layers: graph encoder 中 编码器层数
             num_heads: graph encoder 中 多头注意力机制的 head 数
         """
         super().__init__()
         self.save_hyperparameters()
         self.node_feature_encoder = NodeFeatureEncoder(mult_class_num, nH_class_num, 
-                                                       mult_embed_dim=mult_embed_dim, nH_embed_dim=nH_embed_dim,
-                                                       out_dim=in_node_dim)
+                                                       mult_embed_dim=mult_embed_dim, 
+                                                       nH_embed_dim=nH_embed_dim,
+                                                       c_w_embed_dim=c_w_embed_dim,
+                                                       )
+        in_node_dim = c_w_embed_dim*2 + mult_embed_dim + nH_embed_dim
+        print('in_node_dim of node feature encoder', in_node_dim)
         self.encoder = NMRGraphEncoder(in_node_dim, hidden_node_dim, graph_dim, num_layers, num_heads)
         self.predictor = MultiTaskNodePredictor(hidden_node_dim*num_heads, graph_dim, mult_class_num, nH_class_num)
 
