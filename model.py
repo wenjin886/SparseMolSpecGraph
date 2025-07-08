@@ -58,11 +58,17 @@ class NodeFeatureEmbedding(nn.Module):
         # Embedding for multiplicity (e.g., s, d, t, q, m) and nH
         self.mult_embed = nn.Embedding(mult_class_num, mult_embed_dim)
         self.nH_embed = nn.Embedding(nH_class_num, nH_embed_dim)
-        self.c_w_embed = nn.Sequential(
-            nn.Linear(2, 2), # norm
+        continuous_value_embed = nn.Sequential(
+            nn.Linear(1, 1), # norm
             nn.SiLU(),
-            nn.Linear(2, c_w_embed_dim*2)
+            nn.Linear(1, c_w_embed_dim)
         )
+        c = copy.deepcopy
+        self.centroid_embed = c(continuous_value_embed)
+        self.width_embed = c(continuous_value_embed)
+        node_feature_dim = mult_embed_dim + nH_embed_dim + c_w_embed_dim*2
+        self.linear = nn.Linear(node_feature_dim, node_feature_dim)
+
 
        
     def forward(self, centroid, width, nH, multiplet):
@@ -74,9 +80,11 @@ class NodeFeatureEmbedding(nn.Module):
         # print('multiplet', type(multiplet), multiplet)
         mult_vec = self.mult_embed(multiplet)               
         nH_vec = self.nH_embed(nH)
-        c_w_vec = self.c_w_embed(torch.cat([centroid.unsqueeze(-1), width.unsqueeze(-1)], dim=-1))
-        x = torch.cat([c_w_vec, nH_vec,  mult_vec], dim=-1)  # [N,all_feature_dim]
-        return x
+        cen_vec = self.centroid_embed(centroid.unsqueeze(-1))
+        wid_vec = self.width_embed(width.unsqueeze(-1))
+        # c_w_vec = self.c_w_embed(torch.cat([centroid.unsqueeze(-1), width.unsqueeze(-1)], dim=-1))
+        x = torch.cat([cen_vec, wid_vec, nH_vec,  mult_vec], dim=-1)  # [N,all_feature_dim]
+        return self.linear(x).relu()
       
 
 class NMRGraphEncoder(nn.Module):
@@ -88,29 +96,19 @@ class NMRGraphEncoder(nn.Module):
         self.hidden_node_dim = hidden_node_dim
         self.num_layers = num_layers
         
-        # # 动态创建 TransformerConv 层
-        # self.conv_layers = nn.ModuleList()
-        
-        # # 第一层：in_dim -> hidden_dim
-        # self.conv_layers.append(
-        #     TransformerConv(in_node_dim, hidden_node_dim, heads=num_heads, edge_dim=edge_dim)
-        # )
-        
-        # # 中间层：hidden_dim * num_heads -> hidden_dim
-        # for _ in range(1, num_layers):
-        #     self.conv_layers.append(
-        #         TransformerConv(hidden_node_dim * num_heads, hidden_node_dim, heads=num_heads, edge_dim=edge_dim)
-        #     )
+    
+        self.edge_embed = nn.Linear(1, 1) # norm
         self.conv_layers = clones(TransformerConv(in_node_dim, hidden_node_dim, heads=num_heads, edge_dim=edge_dim), num_layers)
         self.sublayers = clones(SublayerConnection(size=in_node_dim, dropout=0.1), num_layers)
         
         self.linear = nn.Linear(in_node_dim, in_node_dim)
         
 
-    def forward(self, x, edge_index, batch, edge_attr=None):
+    def forward(self, x, edge_index, batch, edge_attr):
         
-        if edge_attr is not None and edge_attr.dim() == 1:
-            edge_attr = edge_attr.unsqueeze(-1)  # 变成 [num_edges, 1]
+        # if edge_attr is not None and edge_attr.dim() == 1:
+        edge_attr = edge_attr.unsqueeze(-1)  # 变成 [num_edges, 1]
+        edge_attr = self.edge_embed(edge_attr)
 
         # 通过所有卷积层
         for i, conv in enumerate(self.conv_layers):
