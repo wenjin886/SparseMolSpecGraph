@@ -117,21 +117,22 @@ class MultiTaskNodePredictor(nn.Module):
     def __init__(self, node_dim, graph_dim, mult_class_num, nH_class_num):
         super().__init__()
         self.node_dim = node_dim
-        self.graph_dim = graph_dim
+        # self.graph_dim = graph_dim
         
-        # 融合节点特征和图特征的网络
-        self.fusion_network = nn.Sequential(
-            nn.Linear(node_dim + graph_dim, node_dim),
-            nn.SiLU(),
-            nn.Linear(node_dim, node_dim),
-            nn.SiLU(),
-        )
+        # # 融合节点特征和图特征的网络
+        # self.fusion_network = nn.Sequential(
+        #     nn.Linear(node_dim + graph_dim, node_dim),
+        #     nn.SiLU(),
+        #     nn.Linear(node_dim, node_dim),
+        #     nn.SiLU(),
+        # )
         
         # 预测头
-        self.fc_centroid = nn.Linear(node_dim, 1)         # ppm
-        self.fc_width = nn.Linear(node_dim, 1)            # peak width
-        self.fc_nH = nn.Linear(node_dim, nH_class_num)               # proton count
-        self.fc_mult = nn.Linear(node_dim, mult_class_num)  # multiplicity (classification)
+        self.fc_centroid = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, 1))         # ppm
+        self.fc_width = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, 1))            # peak width
+        self.fc_nH = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, nH_class_num))               # proton count
+        self.fc_mult = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, mult_class_num))  # multiplicity (classification)
+
 
     def forward(self, masked_node_embeddings, graph_features, masked_node_batch):
         # num_masked_nodes = masked_node_embeddings.size(0)
@@ -140,10 +141,10 @@ class MultiTaskNodePredictor(nn.Module):
         graph_features_per_masked_node = graph_features[masked_node_batch]
         
         # 融合节点特征和图特征
-        combined_features = torch.cat([masked_node_embeddings, graph_features_per_masked_node], dim=-1)
-        # print("masked_node_embeddings", masked_node_embeddings.shape, "graph_features_per_masked_node", graph_features_per_masked_node.shape)
-        # print("combined_features", combined_features.shape)
-        fused_features = self.fusion_network(combined_features)
+        # combined_features = torch.cat([masked_node_embeddings, graph_features_per_masked_node], dim=-1)
+        # fused_features = self.fusion_network(combined_features)
+
+        fused_features = masked_node_embeddings
         
         return {
             "centroid": self.fc_centroid(fused_features),

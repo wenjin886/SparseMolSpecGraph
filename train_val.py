@@ -6,7 +6,7 @@ import os.path as osp
 import torch
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor, EarlyStopping
 from torch_geometric.loader import DataLoader
 import json
 from argparse import ArgumentParser
@@ -84,7 +84,7 @@ def main(args):
                                 mult_embed_dim=32, nH_embed_dim=16, c_w_embed_dim=8,
                                 hidden_node_dim=128, 
                                 graph_dim=128, 
-                                num_layers=6, num_heads=4,
+                                num_layers=4, num_heads=4,
                                 warm_up_step=args.warm_up_step, lr=args.lr)
         print(model)
 
@@ -116,7 +116,13 @@ def main(args):
                                           monitor=args.loss_monitor,
                                           save_last=True)
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    callbacks = [checkpoint_callback, lr_monitor]
+    early_stop_callback = EarlyStopping(
+            monitor='val_loss',      # 监控指标，例如验证集损失
+            patience=5,             # 如果10个epoch内指标未改善则停止训练
+            mode='min',              # 监控指标越小越好（如损失函数）
+            verbose=True             # 是否打印信息
+        )
+    callbacks = [checkpoint_callback, lr_monitor, early_stop_callback]
 
     trainer = pl.Trainer(
         accelerator=accelerator,
