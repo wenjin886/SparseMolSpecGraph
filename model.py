@@ -6,7 +6,9 @@ from torch_geometric.nn import TransformerConv, global_mean_pool
 import pytorch_lightning as pl
 
 class NodeFeatureEncoder(nn.Module):
-    def __init__(self, mult_class_num, nH_class_num, out_dim=32, hidden_dim=64):
+    def __init__(self, mult_class_num, nH_class_num, 
+                 mult_embed_dim=16, nH_embed_dim=8,
+                 out_dim=32, hidden_dim=64):
         """
         args:
             mult_class_num: len(MULTIPLETS_LIST)
@@ -17,17 +19,18 @@ class NodeFeatureEncoder(nn.Module):
         super().__init__()
 
         # Embedding for multiplicity (e.g., s, d, t, q, m) and nH
-        self.mult_embed = nn.Embedding(mult_class_num, 4)
-        self.nH_embed = nn.Embedding(nH_class_num, 4)
+        self.mult_embed = nn.Embedding(mult_class_num, mult_embed_dim)
+        self.nH_embed = nn.Embedding(nH_class_num, nH_embed_dim)
 
 
         # Learnable normalization layer: applies per-feature scale and bias
-        self.feature_norm = nn.Linear(2 + 8, 2 + 8)  # input: 2 float + (4 mult_embed + 4 mult_embed)
+        all_feature_dim = 2 + mult_embed_dim + nH_embed_dim
+        self.feature_norm = nn.Linear(all_feature_dim, all_feature_dim)  # input: 2 float + (4 mult_embed + 4 mult_embed)
 
         # Projection network to target embedding dim
         self.fc = nn.Sequential(
             nn.ReLU(),
-            nn.Linear(2 + 8, hidden_dim),
+            nn.Linear(all_feature_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, out_dim)
         )
@@ -39,10 +42,10 @@ class NodeFeatureEncoder(nn.Module):
           - multiplet: [N] long (class index)
         """
         # print('multiplet', type(multiplet), multiplet)
-        mult_vec = self.mult_embed(multiplet)                 # [N, 4]
+        mult_vec = self.mult_embed(multiplet)               
         nH_vec = self.nH_embed(nH)
        
-        x = torch.cat([centroid.unsqueeze(-1), width.unsqueeze(-1), nH_vec,  mult_vec], dim=-1)  # [N, 2 + 4 + 4]
+        x = torch.cat([centroid.unsqueeze(-1), width.unsqueeze(-1), nH_vec,  mult_vec], dim=-1)  # [N,all_feature_dim]
         # print('x', x.shape)
 
         x = self.feature_norm(x)  # Learnable normalization
@@ -97,7 +100,7 @@ class NMRGraphEncoder(nn.Module):
         
         # 图级特征：使用 global_mean_pool 聚合所有节点
         graph_embeddings = global_mean_pool(x, batch)
-        print('graph_embeddings', graph_embeddings.shape)
+        # print('graph_embeddings', graph_embeddings.shape)
         graph_features = self.graph_encoder(graph_embeddings)
         
         return node_embeddings, graph_features
@@ -112,10 +115,8 @@ class MultiTaskNodePredictor(nn.Module):
         self.fusion_network = nn.Sequential(
             nn.Linear(node_dim + graph_dim, node_dim),
             nn.ReLU(),
-            nn.Dropout(0.1),
             nn.Linear(node_dim, node_dim // 2),
             nn.ReLU(),
-            nn.Dropout(0.1)
         )
         
         # 预测头
@@ -146,6 +147,7 @@ class MultiTaskNodePredictor(nn.Module):
 class PeakGraphModule(pl.LightningModule):
     def __init__(self, mult_class_num, nH_class_num, 
                  in_node_dim=16, hidden_node_dim=64, 
+                 mult_embed_dim=16, nH_embed_dim=8,
                  graph_dim=32,
                  num_layers=4, num_heads=4,
                  warm_up_step=1000, lr=1):
@@ -160,7 +162,9 @@ class PeakGraphModule(pl.LightningModule):
         """
         super().__init__()
         self.save_hyperparameters()
-        self.node_feature_encoder = NodeFeatureEncoder(mult_class_num, nH_class_num, out_dim=in_node_dim)
+        self.node_feature_encoder = NodeFeatureEncoder(mult_class_num, nH_class_num, 
+                                                       mult_embed_dim=mult_embed_dim, nH_embed_dim=nH_embed_dim,
+                                                       out_dim=in_node_dim)
         self.encoder = NMRGraphEncoder(in_node_dim, hidden_node_dim, graph_dim, num_layers, num_heads)
         self.predictor = MultiTaskNodePredictor(hidden_node_dim*num_heads, graph_dim, mult_class_num, nH_class_num)
 
@@ -198,8 +202,8 @@ class PeakGraphModule(pl.LightningModule):
         return total_loss, {"loss_centroid": loss_centroid, "loss_width": loss_width, "loss_nH": loss_nH, "loss_mult": loss_mult}
     
     def compute_accuracy(self, pred, target):
-        print('pred nH', pred["nH"].shape, 'target nH', target["nH"].shape)
-        print('pred mult', pred["multiplet_logits"].shape, 'target mult', target["multiplet"].shape)
+        # print('pred nH', pred["nH"].shape, 'target nH', target["nH"].shape)
+        # print('pred mult', pred["multiplet_logits"].shape, 'target mult', target["multiplet"].shape)
         pred_nH = torch.argmax(pred["nH"], dim=-1)
         acc_nH = (pred_nH == target["nH"]).float().mean()
         pred_mult = torch.argmax(pred["multiplet_logits"], dim=-1)

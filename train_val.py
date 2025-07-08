@@ -58,7 +58,8 @@ def split_dataset(dataset_path, seed):
 def main(args):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
     torch.set_float32_matmul_precision(args.precision)
-
+    
+    
     
     print(f"Loading dataset: {args.dataset_path}")
     assert osp.exists(args.dataset_path), f"Dataset path does not exist: {args.dataset_path}"
@@ -70,7 +71,7 @@ def main(args):
         test_set = torch.load(osp.join(args.dataset_path, "test_set.pt"))
 
 
-    train_dataloader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=17)
+    train_dataloader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
     val_dataloader = DataLoader(val_set, batch_size=args.batch_size, shuffle=True)
     test_dataloader = DataLoader(test_set, batch_size=args.batch_size, shuffle=True)
 
@@ -80,19 +81,23 @@ def main(args):
         MULTIPLETS = dataset_info["MULTIPLETS"]
         NUM_H = dataset_info["NUM_H"]
         model = PeakGraphModule(mult_class_num=len(MULTIPLETS), nH_class_num=len(NUM_H), 
-                                in_node_dim=16, hidden_node_dim=64, graph_dim=32, 
-                                num_layers=4, num_heads=4,
+                                mult_embed_dim=128, nH_embed_dim=64,
+                                in_node_dim=64, hidden_node_dim=64, 
+                                graph_dim=256, 
+                                num_layers=8, num_heads=4,
                                 warm_up_step=args.warm_up_step, lr=args.lr)
         print(model)
 
-
+    exp_name = get_formatted_exp_name(args.exp_name)
+    save_dirpath = osp.join(args.exp_save_path, exp_name)
+    print(f"Will save training results in {save_dirpath}")
     if args.code_test:
         wandb_logger = None
         fast_dev_run = 2
     else:
         wandb_logger = WandbLogger(
                     project=args.wandb_project,
-                    name=get_formatted_exp_name(args.exp_name),
+                    name=exp_name,
                     save_dir=args.exp_save_path
                 )
         fast_dev_run = False
@@ -104,7 +109,8 @@ def main(args):
         device_num = "auto"
         accelerator = "auto"
 
-    checkpoint_callback = ModelCheckpoint(dirpath=args.exp_save_path, 
+    
+    checkpoint_callback = ModelCheckpoint(dirpath=save_dirpath, 
                                           save_top_k=args.save_top_k, 
                                           every_n_epochs=args.save_every_n_epochs,
                                           monitor=args.loss_monitor,
