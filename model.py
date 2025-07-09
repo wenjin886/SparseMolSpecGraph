@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import Linear, Module
 from torch_geometric.nn import TransformerConv, global_mean_pool
+from torchmetrics.classification import MulticlassAUROC
 import pytorch_lightning as pl
 import copy
 
@@ -178,6 +179,9 @@ class PeakGraphModule(pl.LightningModule):
         self.lr = lr
         self.mult_class_weights = mult_class_weights
 
+        self.mult_auroc = MulticlassAUROC(mult_class_num, average="macro")
+        self.nH_auroc = MulticlassAUROC(nH_class_num, average="macro")
+
     
     def encode(self, data):
         node_features = self.node_feature_encoder(data.centroids, data.peak_widths, data.nH, data.multiplets)
@@ -210,14 +214,19 @@ class PeakGraphModule(pl.LightningModule):
         )
         return total_loss, {"loss_centroid": loss_centroid, "loss_width": loss_width, "loss_nH": loss_nH, "loss_mult": loss_mult}
     
-    def compute_accuracy(self, pred, target):
+    def compute_accuracy_auc(self, pred, target):
         # print('pred nH', pred["nH"].shape, 'target nH', target["nH"].shape)
         # print('pred mult', pred["multiplet_logits"].shape, 'target mult', target["multiplet"].shape)
         pred_nH = torch.argmax(pred["nH"], dim=-1)
         acc_nH = (pred_nH == target["nH"]).float().mean()
         pred_mult = torch.argmax(pred["multiplet_logits"], dim=-1)
         acc_mult = (pred_mult == target["multiplet"]).float().mean()
-        return acc_nH, acc_mult
+
+        nH_probs = torch.softmax(pred["nH"], dim=-1)
+        nH_auc = self.nH_auroc(nH_probs, target["nH"])
+        mult_probs = torch.softmax(pred["multiplet_logits"], dim=-1)
+        mult_auc = self.mult_auroc(mult_probs, target["multiplet"])
+        return acc_nH, acc_mult, nH_auc, mult_auc
     
     def training_step(self, batch, batch_idx):
         
@@ -244,9 +253,11 @@ class PeakGraphModule(pl.LightningModule):
         self.log("val_loss_width", loss_dic["loss_width"], batch_size=batch_size)
         self.log("val_loss_nH", loss_dic["loss_nH"], batch_size=batch_size)
         self.log("val_loss_mult", loss_dic["loss_mult"], batch_size=batch_size)
-        acc_nH, acc_mult = self.compute_accuracy(pred, batch.masked_node_target)
+        acc_nH, acc_mult, nH_auc, mult_auc = self.compute_accuracy(pred, batch.masked_node_target)
         self.log("val_acc_nH", acc_nH, batch_size=batch_size)
+        self.log("val_auc_nH", nH_auc, batch_size=batch_size)
         self.log("val_acc_mult", acc_mult, batch_size=batch_size)
+        self.log("val_auc_mult", mult_auc, batch_size=batch_size)
         return loss
     
     def test_step(self, batch, batch_idx):
@@ -260,9 +271,11 @@ class PeakGraphModule(pl.LightningModule):
         self.log("test_loss_width", loss_dic["loss_width"], batch_size=batch_size)
         self.log("test_loss_nH", loss_dic["loss_nH"], batch_size=batch_size)
         self.log("test_loss_mult", loss_dic["loss_mult"], batch_size=batch_size)
-        acc_nH, acc_mult = self.compute_accuracy(pred, batch.masked_node_target)
+        acc_nH, acc_mult, nH_auc, mult_auc = self.compute_accuracy(pred, batch.masked_node_target)
         self.log("test_acc_nH", acc_nH, batch_size=batch_size)
+        self.log("test_auc_nH", nH_auc, batch_size=batch_size)
         self.log("test_acc_mult", acc_mult, batch_size=batch_size)
+        self.log("test_auc_mult", mult_auc, batch_size=batch_size)
         return loss
 
     
