@@ -8,15 +8,17 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor, EarlyStopping
 from torch_geometric.loader import DataLoader
+
 import json
 from argparse import ArgumentParser
 from datetime import datetime
 import random
-from model import PeakGraphModule
+from tqdm import tqdm
 
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torch_geometric")
 
+from model import PeakGraphModule
 
 def get_formatted_exp_name(exp_name, resume=False):
     formatted_time = datetime.now().strftime("%H-%M-%d-%m-%Y")
@@ -76,6 +78,7 @@ def main(args):
             val_set = torch.load(osp.join(args.dataset_path, "val_set.pt"))
             test_set = torch.load(osp.join(args.dataset_path, "test_set.pt"))
 
+    
 
     train_dataloader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
     val_dataloader = DataLoader(val_set, batch_size=args.batch_size, shuffle=True)
@@ -86,10 +89,26 @@ def main(args):
     if args.spec_type:
         MULTIPLETS = dataset_info["MULTIPLETS"]
         NUM_H = dataset_info["NUM_H"]
+
+        # # train_set是一个包含Data对象的list
+        # all_multiplets = []
+        # print("compute class weight")
+        # for data in tqdm(train_set,desc="train set"):
+        #     # 假设每个data.multiplets是1D tensor
+        #     all_multiplets.append(data.multiplets)
+        # all_multiplets = torch.cat(all_multiplets)
+        # mult_class_counts = torch.bincount(all_multiplets, minlength=len(MULTIPLETS))  # 保证长度为len(MULTIPLETS)
+        # print(mult_class_counts)
+        # mult_class_weights = 1.0 / (mult_class_counts.float() + 1e-6)
+        # mult_class_weights[mult_class_counts == 0] = 0.0
+        # # mult_class_weights = mult_class_weights * (len(mult_class_counts) / mult_class_weights.sum())
+        # print(mult_class_weights)
+
         model = PeakGraphModule(mult_class_num=len(MULTIPLETS), nH_class_num=len(NUM_H), 
                                 mult_embed_dim=128, nH_embed_dim=64, c_w_embed_dim=32,
                                 # hidden_node_dim=128, 
                                 # graph_dim=128, 
+                                # mult_class_weights=mult_class_weights,
                                 num_layers=4, num_heads=4,
                                 warm_up_step=args.warm_up_step, lr=args.lr)
         print(model)

@@ -6,6 +6,7 @@ from torch_geometric.nn import TransformerConv, global_mean_pool
 import pytorch_lightning as pl
 import copy
 
+
 def clones(module, N):
     "Produce N identical layers."
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
@@ -96,7 +97,6 @@ class NMRGraphEncoder(nn.Module):
         self.hidden_node_dim = hidden_node_dim
         self.num_layers = num_layers
         
-    
         self.edge_embed = nn.Linear(1, 1) # norm
         self.conv_layers = clones(TransformerConv(in_node_dim, hidden_node_dim, heads=num_heads, edge_dim=edge_dim), num_layers)
         self.sublayers = clones(SublayerConnection(size=in_node_dim, dropout=0.1), num_layers)
@@ -127,7 +127,6 @@ class MultiTaskNodePredictor(nn.Module):
         super().__init__()
         self.node_dim = node_dim
         
-        
         # 预测头
         self.fc_centroid = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, 1))         # ppm
         self.fc_width = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, 1))            # peak width
@@ -136,7 +135,6 @@ class MultiTaskNodePredictor(nn.Module):
 
 
     def forward(self, masked_node_embeddings):
-        
 
         return {
             "centroid": self.fc_centroid(masked_node_embeddings),
@@ -151,6 +149,7 @@ class PeakGraphModule(pl.LightningModule):
                 #  graph_dim=32,
                 #  hidden_node_dim=64, 
                  num_layers=4, num_heads=4,
+                 mult_class_weights=None,
                  warm_up_step=1000, lr=1):
         """
         args:
@@ -177,6 +176,8 @@ class PeakGraphModule(pl.LightningModule):
 
         self.warm_up_step = warm_up_step
         self.lr = lr
+        self.mult_class_weights = mult_class_weights
+
     
     def encode(self, data):
         node_features = self.node_feature_encoder(data.centroids, data.peak_widths, data.nH, data.multiplets)
@@ -195,7 +196,8 @@ class PeakGraphModule(pl.LightningModule):
         loss_centroid = F.mse_loss(pred["centroid"].squeeze(), target["centroid"])
         loss_width = F.mse_loss(pred["width"].squeeze(), target["width"])
         loss_nH = F.cross_entropy(pred["nH"], target["nH"])
-        loss_mult = F.cross_entropy(pred["multiplet_logits"], target["multiplet"])
+        loss_mult = F.cross_entropy(pred["multiplet_logits"], target["multiplet"],
+                                    weight=self.mult_class_weights.to(target["multiplet"].device))
 
         if weight_dict is None:
             weight_dict = {"centroid": 1.0, "width": 1.0, "nH": 1.0, "multiplet": 1.0}
