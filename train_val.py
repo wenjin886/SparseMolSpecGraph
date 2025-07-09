@@ -28,7 +28,11 @@ def get_formatted_exp_name(exp_name, resume=False):
         formatted_exp_name = f"{exp_name}_{formatted_time}"
     return formatted_exp_name
 
-def split_dataset(dataset_path, seed):
+def split_dataset(dataset_path, seed, save_dir_name):
+    save_dir = osp.join(osp.dirname(dataset_path), save_dir_name)
+    if not osp.exists(save_dir): os.makedir(save_dir)
+    print(f"Will Save splitted dataset in {save_dir}")
+
     dataset = torch.load(dataset_path)
     num_data = len(dataset)
 
@@ -40,9 +44,7 @@ def split_dataset(dataset_path, seed):
     val_set = dataset[int(0.85*num_data):int(0.9*num_data)]
     test_set = dataset[int(0.9*num_data):]
 
-    save_dir = osp.join(osp.dirname(dataset_path), "train_val_test_set")
-    if not osp.exists(save_dir): os.makedir(save_dir)
-    print(f"Saving splitted dataset in {save_dir}")
+    
     torch.save(train_set, osp.join(save_dir, "train_set.pt"))
     torch.save(val_set, osp.join(save_dir, "val_set.pt"))
     torch.save(test_set, osp.join(save_dir, "test_set.pt"))
@@ -66,7 +68,7 @@ def main(args):
     print(f"Loading dataset: {args.dataset_path}")
     assert osp.exists(args.dataset_path), f"Dataset path does not exist: {args.dataset_path}"
     if osp.isfile(args.dataset_path):
-        train_set, val_set, test_set = split_dataset(args.dataset_path, args.seed)
+        train_set, val_set, test_set = split_dataset(args.dataset_path, args.seed, args.splitted_set_save_dir_name)
     elif osp.isdir(args.dataset_path):
         if args.code_test:
             print("Only load val set due to code test...")
@@ -91,6 +93,7 @@ def main(args):
                 dataset_info = json.load(f)
             MULTIPLETS = dataset_info["MULTIPLETS"]
             NUM_H = dataset_info["NUM_H"]
+            
         elif args.label_type == "mapped":
             mult_map_info_path = "../Dataset/h_nmr/multiplet_mapping.json"
             nh_map_info_path = "../Dataset/h_nmr/nh_mapping.json"
@@ -100,7 +103,8 @@ def main(args):
             with open(nh_map_info_path, "r") as f:
                 nh_map_info = json.load(f)
                 NUM_H = nh_map_info['nh_label_to_id']
-
+        
+        print(f"lable num | MULTIPLETS: {len(MULTIPLETS)} | NUM_H: {len(NUM_H)}")
 
         # # train_set是一个包含Data对象的list
         # all_multiplets = []
@@ -129,9 +133,7 @@ def main(args):
     save_dirpath = osp.join(args.exp_save_path, exp_name)
     print(f"Will save training results in {save_dirpath}")
 
-    args_dict = vars(args)
-    with open(osp.join(save_dirpath, 'config.json'), 'w') as f: # 保存为 JSON 文件
-        json.dump(args_dict, f, indent=4)
+    
     
     if args.code_test:
         wandb_logger = None
@@ -143,6 +145,9 @@ def main(args):
                     save_dir=args.exp_save_path
                 )
         fast_dev_run = False
+        args_dict = vars(args)
+        with open(osp.join(save_dirpath, 'config.json'), 'w') as f: # 保存为 JSON 文件
+            json.dump(args_dict, f, indent=4)
 
     if device == torch.device("cuda"):
         device_num = torch.cuda.device_count()
@@ -190,6 +195,7 @@ if __name__ == "__main__":
     parser.add_argument('--exp_name', type=str, required=True)
     parser.add_argument('--exp_save_path', type=str, default='../exp')
     parser.add_argument('--dataset_path', type=str, required=True)
+    parser.add_argument('--splitted_set_save_dir_name', type=str, default="train_val_test_set")
     parser.add_argument('--dataset_info_path', type=str)
     parser.add_argument('--spec_type', type=str, choices=['h_nmr', 'c_nmr', 'ms'], default='h_nmr')
     parser.add_argument('--label_type', type=str, choices=['origin', 'mapped'], required=True)

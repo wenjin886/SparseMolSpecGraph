@@ -200,8 +200,12 @@ class PeakGraphModule(pl.LightningModule):
         loss_centroid = F.mse_loss(pred["centroid"].squeeze(), target["centroid"])
         loss_width = F.mse_loss(pred["width"].squeeze(), target["width"])
         loss_nH = F.cross_entropy(pred["nH"], target["nH"])
+
+        if self.mult_class_weights is not None:
+            self.mult_class_weights.to(target["multiplet"].device)
+
         loss_mult = F.cross_entropy(pred["multiplet_logits"], target["multiplet"],
-                                    weight=self.mult_class_weights.to(target["multiplet"].device))
+                                    weight=self.mult_class_weights)
 
         if weight_dict is None:
             weight_dict = {"centroid": 1.0, "width": 1.0, "nH": 1.0, "multiplet": 1.0}
@@ -253,7 +257,7 @@ class PeakGraphModule(pl.LightningModule):
         self.log("val_loss_width", loss_dic["loss_width"], batch_size=batch_size)
         self.log("val_loss_nH", loss_dic["loss_nH"], batch_size=batch_size)
         self.log("val_loss_mult", loss_dic["loss_mult"], batch_size=batch_size)
-        acc_nH, acc_mult, nH_auc, mult_auc = self.compute_accuracy(pred, batch.masked_node_target)
+        acc_nH, acc_mult, nH_auc, mult_auc = self.compute_accuracy_auc(pred, batch.masked_node_target)
         self.log("val_acc_nH", acc_nH, batch_size=batch_size)
         self.log("val_auc_nH", nH_auc, batch_size=batch_size)
         self.log("val_acc_mult", acc_mult, batch_size=batch_size)
@@ -271,7 +275,7 @@ class PeakGraphModule(pl.LightningModule):
         self.log("test_loss_width", loss_dic["loss_width"], batch_size=batch_size)
         self.log("test_loss_nH", loss_dic["loss_nH"], batch_size=batch_size)
         self.log("test_loss_mult", loss_dic["loss_mult"], batch_size=batch_size)
-        acc_nH, acc_mult, nH_auc, mult_auc = self.compute_accuracy(pred, batch.masked_node_target)
+        acc_nH, acc_mult, nH_auc, mult_auc = self.compute_accuracy_auc(pred, batch.masked_node_target)
         self.log("test_acc_nH", acc_nH, batch_size=batch_size)
         self.log("test_auc_nH", nH_auc, batch_size=batch_size)
         self.log("test_acc_mult", acc_mult, batch_size=batch_size)
