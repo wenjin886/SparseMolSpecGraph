@@ -86,7 +86,7 @@ def main(args):
 
     with open(args.dataset_info_path, "r") as f:
         dataset_info = json.load(f)
-    if args.spec_type:
+    if args.spec_type == "h_nmr":
         MULTIPLETS = dataset_info["MULTIPLETS"]
         NUM_H = dataset_info["NUM_H"]
 
@@ -116,6 +116,11 @@ def main(args):
     exp_name = get_formatted_exp_name(args.exp_name)
     save_dirpath = osp.join(args.exp_save_path, exp_name)
     print(f"Will save training results in {save_dirpath}")
+
+    args_dict = vars(args)
+    with open(osp.join(save_dirpath, 'config.json'), 'w') as f: # 保存为 JSON 文件
+        json.dump(args_dict, f, indent=4)
+    
     if args.code_test:
         wandb_logger = None
         fast_dev_run = 2
