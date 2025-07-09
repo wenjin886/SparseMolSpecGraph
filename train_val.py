@@ -47,7 +47,7 @@ def split_dataset(dataset_path, seed):
     torch.save(val_set, osp.join(save_dir, "val_set.pt"))
     torch.save(test_set, osp.join(save_dir, "test_set.pt"))
 
-    with open(osp.join(save_dir, "dataset_info.json"), "w") as f:
+    with open(osp.join(save_dir, "splitted_set_info.json"), "w") as f:
         info = {
             "split_dataset_from": args.dataset_path,
             "train_set": (len(train_set), 0.85),
@@ -84,11 +84,23 @@ def main(args):
     val_dataloader = DataLoader(val_set, batch_size=args.batch_size, shuffle=True)
     test_dataloader = DataLoader(test_set, batch_size=args.batch_size, shuffle=True)
 
-    with open(args.dataset_info_path, "r") as f:
-        dataset_info = json.load(f)
+    
     if args.spec_type == "h_nmr":
-        MULTIPLETS = dataset_info["MULTIPLETS"]
-        NUM_H = dataset_info["NUM_H"]
+        if args.label_type == "origin":
+            with open(args.dataset_info_path, "r") as f:
+                dataset_info = json.load(f)
+            MULTIPLETS = dataset_info["MULTIPLETS"]
+            NUM_H = dataset_info["NUM_H"]
+        elif args.label_type == "mapped":
+            mult_map_info_path = "../Dataset/h_nmr/multiplet_mapping.json"
+            nh_map_info_path = "../Dataset/h_nmr/nh_mapping.json"
+            with open(mult_map_info_path, "r") as f:
+                mult_map_info = json.load(f)
+                MULTIPLETS = mult_map_info['multiplet_label_to_id']
+            with open(nh_map_info_path, "r") as f:
+                nh_map_info = json.load(f)
+                NUM_H = nh_map_info['nh_label_to_id']
+
 
         # # train_set是一个包含Data对象的list
         # all_multiplets = []
@@ -178,7 +190,9 @@ if __name__ == "__main__":
     parser.add_argument('--exp_name', type=str, required=True)
     parser.add_argument('--exp_save_path', type=str, default='../exp')
     parser.add_argument('--dataset_path', type=str, required=True)
-    parser.add_argument('--dataset_info_path', type=str, required=True)
+    parser.add_argument('--dataset_info_path', type=str)
+    parser.add_argument('--spec_type', type=str, choices=['h_nmr', 'c_nmr', 'ms'], default='h_nmr')
+    parser.add_argument('--label_type', type=str, choices=['origin', 'mapped'], required=True)
 
     parser.add_argument('--code_test', action='store_true')
     parser.add_argument('--warm_up_step', type=int, default=3000)
@@ -189,7 +203,7 @@ if __name__ == "__main__":
     parser.add_argument('--save_every_n_epochs', type=int, default=1)
     parser.add_argument('--seed', type=int, default=42)
 
-    parser.add_argument('--spec_type', type=str, choices=['h_nmr', 'c_nmr', 'ms'], default='h_nmr')
+    
     parser.add_argument('--wandb_project', type=str, default='NMR-Graph')
     parser.add_argument('--precision', type=str, default='medium',choices=['medium', 'high'])
     parser.add_argument('--loss_monitor', type=str, default='val_loss')
