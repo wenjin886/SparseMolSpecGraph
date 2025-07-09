@@ -179,6 +179,8 @@ def process_origin_data(data_dir, save_dir, dataset_name):
     torch.save(h_nmr_dataset, os.path.join(save_dir, dataset_name+'.pt'))
     torch.save(masked_hnmr_dataset, os.path.join(save_dir, dataset_name+'_masked.pt'))
 
+
+
 def processing_hnmr_cls_label(dataset_path, dataset_info_path,
                               mult_map_info_path, nh_map_info_path, save_path):
     
@@ -222,7 +224,13 @@ def processing_hnmr_cls_label(dataset_path, dataset_info_path,
     
     torch.save(mapped_dataset, os.path.join(save_path, "h_nmr_label_mapper.pt"))
     
-
+def generate_masked_node_dataset(unmasked_dataset_path, save_name):
+    unmaksed_dataset = torch.load(unmasked_dataset_path)
+    masked_dataset = []
+    for data_i in tqdm(unmaksed_dataset, total=len(unmaksed_dataset)):
+        masked_dataset.append(create_masked_data(data_i))
+    
+    torch.save(masked_dataset, os.path.join(os.path.dirname(unmasked_dataset_path), save_name))
 
 
 if __name__ == "__main__":
@@ -231,13 +239,15 @@ if __name__ == "__main__":
     # save_dir = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr"
     # process_origin_data(data_dir, save_dir, 'h_nmr')
 
-    dir_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr"
-    dataset_path = os.path.join(dir_path, "h_nmr.pt")
-    dataset_info_path = os.path.join(dir_path, "h_nmr.json")
-    mult_map_info_path = os.path.join(dir_path, "multiplet_mapping.json")
-    nh_map_info_path = os.path.join(dir_path, "nh_mapping.json")
+    # dir_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr"
+    # dataset_path = os.path.join(dir_path, "h_nmr.pt")
+    # dataset_info_path = os.path.join(dir_path, "h_nmr.json")
+    # mult_map_info_path = os.path.join(dir_path, "multiplet_mapping.json")
+    # nh_map_info_path = os.path.join(dir_path, "nh_mapping.json")
+    # processing_hnmr_cls_label(dataset_path, dataset_info_path,
+    #                           mult_map_info_path, nh_map_info_path, save_path=dir_path)
 
-    processing_hnmr_cls_label(dataset_path, dataset_info_path,
-                              mult_map_info_path, nh_map_info_path, save_path=dir_path)
+    dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/h_nmr_label_mapped.pt"
+    generate_masked_node_dataset(dataset_path, "masked_h_nmr_label_mapped.pt")
     
 
