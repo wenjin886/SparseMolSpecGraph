@@ -182,43 +182,62 @@ def process_origin_data(data_dir, save_dir, dataset_name):
 def processing_hnmr_cls_label(dataset_path, dataset_info_path,
                               mult_map_info_path, nh_map_info_path, save_path):
     
-    with open(dataset_info_path, "w") as f:
+    print(dataset_info_path)
+    with open(dataset_info_path, "r") as f:
         dataset_info = json.load(f)
     MULTIPLETS_id2type, NUM_H_id2type = {}, {}  
     for type, id in dataset_info['MULTIPLETS'].items():
         MULTIPLETS_id2type[int(id)] = type
     for type, id in dataset_info['NUM_H'].items():
         NUM_H_id2type[int(id)] = type
+    print("MULTIPLETS_id2type", MULTIPLETS_id2type)
+    print("NUM_H_id2type", NUM_H_id2type)
 
-    with open(mult_map_info_path, "w") as f:
+    with open(mult_map_info_path, "r") as f:
         mult_map_info = json.load(f)
-    with open(nh_map_info_path, "w") as f:
+        multiplet_mapping = mult_map_info["multiplet_mapping"]
+        mult_label_to_id = mult_map_info['multiplet_label_to_id']
+
+    with open(nh_map_info_path, "r") as f:
         nh_map_info = json.load(f)
-    mult_label_to_id = mult_map_info['multiplet_label_to_id']
-    nh_label_to_id = nh_map_info['nh_label_to_id']
-    
+        nh_mapping = nh_map_info["nh_mapping"]
+        nh_label_to_id = nh_map_info['nh_label_to_id']
+    print("mult_label_to_id", mult_label_to_id)
+    print("nh_label_to_id", nh_label_to_id)
+
+    print("Loading dataset")
     dataset = torch.load(dataset_path) 
     mapped_dataset = []
     # Process multiplet label
-    for data in dataset:
-        print(data.multiplets)
-        print(data.nH)
-        # 对于 multiplets
-        data.multiplets = torch.tensor([mult_label_to_id[MULTIPLETS_id2type[int(id)]] for id in data.multiplets])
-        # 对于 nH
-        data.nH = torch.tensor([nh_label_to_id[NUM_H_id2type[int(id)]] for id in data.nH])
-        print(data.multiplets)
-        print(data.nH)
+    for data in tqdm(dataset, total=len(dataset)):
+        try:
+            data.multiplets = torch.tensor([mult_label_to_id[multiplet_mapping[MULTIPLETS_id2type[int(id)]]] for id in data.multiplets])
+            data.nH = torch.tensor([nh_label_to_id[nh_mapping[NUM_H_id2type[int(id)]]] for id in data.nH])
+        except Exception as e:
+            print(e)
+            print("data.multiplets", data.multiplets)
+            print("data.nH", data.nH)
+            break
         mapped_dataset.append(data)
     
-    # torch.save(mapped_dataset, save_path)
+    torch.save(mapped_dataset, os.path.join(save_path, "h_nmr_label_mapper.pt"))
     
 
 
 
 if __name__ == "__main__":
 
-    data_dir = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/multimodal_spectroscopic_dataset"
-    save_dir = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr"
-    process_origin_data(data_dir, save_dir, 'h_nmr')
+    # data_dir = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/multimodal_spectroscopic_dataset"
+    # save_dir = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr"
+    # process_origin_data(data_dir, save_dir, 'h_nmr')
+
+    dir_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr"
+    dataset_path = os.path.join(dir_path, "h_nmr.pt")
+    dataset_info_path = os.path.join(dir_path, "h_nmr.json")
+    mult_map_info_path = os.path.join(dir_path, "multiplet_mapping.json")
+    nh_map_info_path = os.path.join(dir_path, "nh_mapping.json")
+
+    processing_hnmr_cls_label(dataset_path, dataset_info_path,
+                              mult_map_info_path, nh_map_info_path, save_path=dir_path)
+    
 
