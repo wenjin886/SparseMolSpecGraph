@@ -179,6 +179,41 @@ def process_origin_data(data_dir, save_dir, dataset_name):
     torch.save(h_nmr_dataset, os.path.join(save_dir, dataset_name+'.pt'))
     torch.save(masked_hnmr_dataset, os.path.join(save_dir, dataset_name+'_masked.pt'))
 
+def processing_hnmr_cls_label(dataset_path, dataset_info_path,
+                              mult_map_info_path, nh_map_info_path, save_path):
+    
+    with open(dataset_info_path, "w") as f:
+        dataset_info = json.load(f)
+    MULTIPLETS_id2type, NUM_H_id2type = {}, {}  
+    for type, id in dataset_info['MULTIPLETS'].items():
+        MULTIPLETS_id2type[int(id)] = type
+    for type, id in dataset_info['NUM_H'].items():
+        NUM_H_id2type[int(id)] = type
+
+    with open(mult_map_info_path, "w") as f:
+        mult_map_info = json.load(f)
+    with open(nh_map_info_path, "w") as f:
+        nh_map_info = json.load(f)
+    mult_label_to_id = mult_map_info['multiplet_label_to_id']
+    nh_label_to_id = nh_map_info['nh_label_to_id']
+    
+    dataset = torch.load(dataset_path) 
+    mapped_dataset = []
+    # Process multiplet label
+    for data in dataset:
+        print(data.multiplets)
+        print(data.nH)
+        # 对于 multiplets
+        data.multiplets = torch.tensor([mult_label_to_id[MULTIPLETS_id2type[int(id)]] for id in data.multiplets])
+        # 对于 nH
+        data.nH = torch.tensor([nh_label_to_id[NUM_H_id2type[int(id)]] for id in data.nH])
+        print(data.multiplets)
+        print(data.nH)
+        mapped_dataset.append(data)
+    
+    # torch.save(mapped_dataset, save_path)
+    
+
 
 
 if __name__ == "__main__":
