@@ -7,18 +7,20 @@ import os.path as osp
 from tqdm import tqdm
 from model import PeakGraphModule
 
-def compute_auc(pred, target, nH_auc_metric, mult_auc_metric):
+def compute_auc(pred, target, nH_auc_metric, mult_auc_metric, num_mult_cls, num_nH_cls):
     # 转为概率（softmax）
     nH_probs = torch.softmax(pred["nH"], dim=-1)
-    print(torch.bincount(torch.argmax(nH_probs, dim=-1)))
-    
     mult_probs = torch.softmax(pred["multiplet_logits"], dim=-1)
-    print(torch.bincount(torch.argmax(mult_probs, dim=-1)))
-
 
     # 获取标签
     nH_target = target["nH"]
+    print(torch.bincount(torch.argmax(nH_probs, dim=-1), minlength=num_nH_cls))
+    print(torch.bincount(nH_target, minlength=num_nH_cls))
+
     mult_target = target["multiplet"]
+    print(torch.bincount(torch.argmax(mult_probs, dim=-1), minlength=num_mult_cls))
+    print(torch.bincount(mult_target, minlength=num_mult_cls))
+
 
     # 分别更新metric对象
     nH_auc = nH_auc_metric(nH_probs, nH_target)
@@ -51,7 +53,7 @@ def main(args):
     nH_auroc_list = []
     for batch in tqdm(test_dataloader, desc="Testing", total=len(test_dataloader)):
         pred = model(batch.to(device))
-        nH_auc, mult_auc = compute_auc(pred, batch.masked_node_target, nH_auroc, mult_auroc)
+        nH_auc, mult_auc = compute_auc(pred, batch.masked_node_target, nH_auroc, mult_auroc, len(MULTIPLETS), len(NUM_H))
         mult_auroc_list.append(mult_auc)
         nH_auroc_list.append(nH_auc)
         break
