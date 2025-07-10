@@ -79,12 +79,10 @@ class NodeFeatureEmbedding(nn.Module):
           - centroid, width, nH: [N, 1] float
           - multiplet: [N] long (class index)
         """
-        # print('multiplet', type(multiplet), multiplet)
         mult_vec = self.mult_embed(multiplet)               
         nH_vec = self.nH_embed(nH)
         cen_vec = self.centroid_embed(centroid.unsqueeze(-1))
         wid_vec = self.width_embed(width.unsqueeze(-1))
-        # c_w_vec = self.c_w_embed(torch.cat([centroid.unsqueeze(-1), width.unsqueeze(-1)], dim=-1))
         x = torch.cat([cen_vec, wid_vec, nH_vec,  mult_vec], dim=-1)  # [N,all_feature_dim]
         return self.linear(x).relu()
       
@@ -107,15 +105,10 @@ class NMRGraphEncoder(nn.Module):
 
     def forward(self, x, edge_index, batch, edge_attr):
         
-        # if edge_attr is not None and edge_attr.dim() == 1:
         edge_attr = edge_attr.unsqueeze(-1)  # 变成 [num_edges, 1]
-        # edge_attr = self.edge_embed(edge_attr)
 
         # 通过所有卷积层
         for i, conv in enumerate(self.conv_layers):
-            # x = conv(x, edge_index, edge_attr)
-            # if i < self.num_layers - 1:  # 除了最后一层，都加激活函数
-            #     x = F.relu(x)
             x = self.sublayers[i](x, lambda x: conv(x, edge_index, edge_attr))
         
         # 节点级特征
@@ -129,12 +122,7 @@ class MultiTaskNodePredictor(nn.Module):
         super().__init__()
         self.node_dim = node_dim
         
-        # # 预测头
-        # self.fc_centroid = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, 1))         # ppm
-        # self.fc_width = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, 1))            # peak width
-        # self.fc_nH = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, nH_class_num))               # proton count
-        # self.fc_mult = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, mult_class_num))  # multiplicity (classification)
-
+       
         # 预测头
         self.fc_centroid = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), 
                                          nn.Linear(node_dim, cen_embed_dim), nn.SiLU(), 
@@ -162,11 +150,9 @@ class MultiTaskNodePredictor(nn.Module):
 class PeakGraphModule(pl.LightningModule):
     def __init__(self, mult_class_num, nH_class_num, 
                  mult_embed_dim=16, nH_embed_dim=8, c_w_embed_dim=8,
-                #  graph_dim=32,
-                #  hidden_node_dim=64, 
                  num_layers=4, num_heads=4,
                  mult_class_weights=None,
-                 warm_up_step=1000, lr=1):
+                 warm_up_step=None, lr=None):
         """
         args:
             mult_class_num: len(MULTIPLETS_LIST)
@@ -195,9 +181,19 @@ class PeakGraphModule(pl.LightningModule):
         self.warm_up_step = warm_up_step
         self.lr = lr
         self.mult_class_weights = mult_class_weights
+        self.__init_weights__()
 
         self.mult_auroc = MulticlassAUROC(mult_class_num, average="macro")
         self.nH_auroc = MulticlassAUROC(nH_class_num, average="macro")
+    
+    def __init_weights__(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Embedding):
+                nn.init.xavier_normal_(m.weight)
 
     
     def encode(self, data):
@@ -209,7 +205,6 @@ class PeakGraphModule(pl.LightningModule):
         node_embeddings = self.encode(data)
         
         # 传入节点特征和图特征
-        masked_node_batch = data.batch[data.masked_node_index]
         pred = self.predictor(node_embeddings[data.masked_node_index])
         return pred
     
@@ -236,8 +231,6 @@ class PeakGraphModule(pl.LightningModule):
         return total_loss, {"loss_centroid": loss_centroid, "loss_width": loss_width, "loss_nH": loss_nH, "loss_mult": loss_mult}
     
     def compute_accuracy_auc(self, pred, target):
-        # print('pred nH', pred["nH"].shape, 'target nH', target["nH"].shape)
-        # print('pred mult', pred["multiplet_logits"].shape, 'target mult', target["multiplet"].shape)
         pred_nH = torch.argmax(pred["nH"], dim=-1)
         acc_nH = (pred_nH == target["nH"]).float().mean()
         pred_mult = torch.argmax(pred["multiplet_logits"], dim=-1)
