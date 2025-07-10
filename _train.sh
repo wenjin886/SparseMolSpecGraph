@@ -13,7 +13,7 @@ echo "Training..."
 #     # --code_test
 
 python train_val.py \
-    --exp_name labelmapped_lrinnodedim_innodedim320_3predhedlayer_1n2n \
+    --exp_name labelmapped_lrinnodedim_innodedim320_3predhedlayer_1n2n_initweight \
     --num_heads 4 \
     --mult_embed_dim 128 \
     --nH_embed_dim 64 \

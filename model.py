@@ -187,6 +187,7 @@ class PeakGraphModule(pl.LightningModule):
         self.nH_auroc = MulticlassAUROC(nH_class_num, average="macro")
     
     def __init_weights__(self):
+        print("Init weights...")
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.xavier_normal_(m.weight)
