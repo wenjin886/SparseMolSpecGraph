@@ -181,20 +181,20 @@ class PeakGraphModule(pl.LightningModule):
         self.warm_up_step = warm_up_step
         self.lr = lr
         self.mult_class_weights = mult_class_weights
-        self.__init_weights__()
+        # self.__init_weights__()
 
         self.mult_auroc = MulticlassAUROC(mult_class_num, average="macro")
         self.nH_auroc = MulticlassAUROC(nH_class_num, average="macro")
     
-    def __init_weights__(self):
-        print("Init weights...")
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_normal_(m.weight)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Embedding):
-                nn.init.xavier_normal_(m.weight)
+    # def __init_weights__(self):
+    #     print("Init weights...")
+    #     for m in self.modules():
+    #         if isinstance(m, nn.Linear):
+    #             nn.init.xavier_normal_(m.weight)
+    #             if m.bias is not None:
+    #                 nn.init.constant_(m.bias, 0)
+    #         elif isinstance(m, nn.Embedding):
+    #             nn.init.xavier_normal_(m.weight)
 
     
     def encode(self, data):
