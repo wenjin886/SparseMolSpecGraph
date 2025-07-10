@@ -124,15 +124,30 @@ class NMRGraphEncoder(nn.Module):
         return node_embeddings
 
 class MultiTaskNodePredictor(nn.Module):
-    def __init__(self, node_dim, mult_class_num, nH_class_num):
+    def __init__(self, node_dim, mult_class_num, nH_class_num,
+                mult_embed_dim, nH_embed_dim, cen_embed_dim, wid_embed_dim):
         super().__init__()
         self.node_dim = node_dim
         
+        # # 预测头
+        # self.fc_centroid = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, 1))         # ppm
+        # self.fc_width = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, 1))            # peak width
+        # self.fc_nH = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, nH_class_num))               # proton count
+        # self.fc_mult = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, mult_class_num))  # multiplicity (classification)
+
         # 预测头
-        self.fc_centroid = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, 1))         # ppm
-        self.fc_width = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, 1))            # peak width
-        self.fc_nH = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, nH_class_num))               # proton count
-        self.fc_mult = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), nn.Linear(node_dim, mult_class_num))  # multiplicity (classification)
+        self.fc_centroid = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), 
+                                         nn.Linear(node_dim, cen_embed_dim), nn.SiLU(), 
+                                         nn.Linear(cen_embed_dim, 1))         # ppm
+        self.fc_width = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), 
+                                      nn.Linear(node_dim, wid_embed_dim), nn.SiLU(), 
+                                      nn.Linear(wid_embed_dim, 1))            # peak width
+        self.fc_nH = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), 
+                                   nn.Linear(node_dim, nH_embed_dim), nn.SiLU(), 
+                                   nn.Linear(nH_embed_dim, nH_class_num))               # proton count
+        self.fc_mult = nn.Sequential(nn.Linear(node_dim, node_dim), nn.SiLU(), 
+                                     nn.Linear(node_dim, mult_embed_dim), nn.SiLU(), 
+                                     nn.Linear(mult_embed_dim, mult_class_num))  # multiplicity (classification)
 
 
     def forward(self, masked_node_embeddings):
@@ -173,7 +188,9 @@ class PeakGraphModule(pl.LightningModule):
         assert in_node_dim % num_heads == 0, "in_node_dim must be divisible by num_heads"
         hidden_node_dim = in_node_dim // num_heads
         self.encoder = NMRGraphEncoder(in_node_dim, hidden_node_dim, num_layers, num_heads)
-        self.predictor = MultiTaskNodePredictor(in_node_dim, mult_class_num, nH_class_num)
+        self.predictor = MultiTaskNodePredictor(in_node_dim, mult_class_num, nH_class_num,
+                                                mult_embed_dim, nH_embed_dim, c_w_embed_dim, c_w_embed_dim)
+        self.in_node_dim = in_node_dim
 
         self.warm_up_step = warm_up_step
         self.lr = lr
@@ -298,7 +315,7 @@ class PeakGraphModule(pl.LightningModule):
             if step == 0:
                 step = 1
             lr_scale = 1 * (
-                512 ** (-0.5) * min(step ** (-0.5), step * self.warm_up_step ** (-1.5))
+                self.in_node_dim ** (-0.5) * min(step ** (-0.5), step * self.warm_up_step ** (-1.5))
             )
 
             return lr_scale
