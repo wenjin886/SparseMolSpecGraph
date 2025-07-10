@@ -62,30 +62,7 @@ def split_dataset(dataset_path, seed, save_dir_name):
 def main(args):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
     torch.set_float32_matmul_precision(args.precision)
-    
-    
-    
-    print(f"Loading dataset: {args.dataset_path}")
-    assert osp.exists(args.dataset_path), f"Dataset path does not exist: {args.dataset_path}"
-    if osp.isfile(args.dataset_path):
-        train_set, val_set, test_set = split_dataset(args.dataset_path, args.seed, args.splitted_set_save_dir_name)
-    elif osp.isdir(args.dataset_path):
-        if args.code_test:
-            print("Only load val set due to code test...")
-            train_set = torch.load(osp.join(args.dataset_path, "val_set.pt"))
-            val_set = train_set
-            test_set = train_set
-        else:
-            train_set = torch.load(osp.join(args.dataset_path, "train_set.pt"))
-            val_set = torch.load(osp.join(args.dataset_path, "val_set.pt"))
-            test_set = torch.load(osp.join(args.dataset_path, "test_set.pt"))
-
-    
-
-    train_dataloader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
-    val_dataloader = DataLoader(val_set, batch_size=args.batch_size, shuffle=True)
-    test_dataloader = DataLoader(test_set, batch_size=args.batch_size, shuffle=True)
-
+  
     
     if args.spec_type == "h_nmr":
         if args.label_type == "origin":
@@ -121,11 +98,8 @@ def main(args):
         # print(mult_class_weights)
 
         model = PeakGraphModule(mult_class_num=len(MULTIPLETS), nH_class_num=len(NUM_H), 
-                                mult_embed_dim=128, nH_embed_dim=64, c_w_embed_dim=32,
-                                # hidden_node_dim=128, 
-                                # graph_dim=128, 
-                                # mult_class_weights=mult_class_weights,
-                                num_layers=4, num_heads=4,
+                                mult_embed_dim=args.mult_embed_dim, nH_embed_dim=args.nH_embed_dim, c_w_embed_dim=args.c_w_embed_dim,
+                                num_layers=args.num_layers, num_heads=args.num_heads,
                                 warm_up_step=args.warm_up_step, lr=args.lr)
         print(model)
 
@@ -145,9 +119,8 @@ def main(args):
                     save_dir=args.exp_save_path
                 )
         fast_dev_run = False
-        args_dict = vars(args)
-        with open(osp.join(save_dirpath, 'config.json'), 'w') as f: # 保存为 JSON 文件
-            json.dump(args_dict, f, indent=4)
+        
+        
 
     if device == torch.device("cuda"):
         device_num = torch.cuda.device_count()
@@ -179,8 +152,36 @@ def main(args):
         fast_dev_run=fast_dev_run,
         callbacks=callbacks
     )
+
+    if not args.code_test:
+        if not os.path.exists(save_dirpath):
+            print(f"Making dir: {save_dirpath}")
+            os.makedirs(save_dirpath)
+        with open(osp.join(save_dirpath, 'config.json'), 'w') as f: # 保存为 JSON 文件
+            args_dict = vars(args)
+            json.dump(args_dict, f, indent=4)
         
-        
+    print(f"Loading dataset: {args.dataset_path}")
+    assert osp.exists(args.dataset_path), f"Dataset path does not exist: {args.dataset_path}"
+    if osp.isfile(args.dataset_path):
+        train_set, val_set, test_set = split_dataset(args.dataset_path, args.seed, args.splitted_set_save_dir_name)
+    elif osp.isdir(args.dataset_path):
+        if args.code_test:
+            print("Only load val set due to code test...")
+            train_set = torch.load(osp.join(args.dataset_path, "val_set.pt"))
+            val_set = train_set
+            test_set = train_set
+        else:
+            train_set = torch.load(osp.join(args.dataset_path, "train_set.pt"))
+            val_set = torch.load(osp.join(args.dataset_path, "val_set.pt"))
+            test_set = torch.load(osp.join(args.dataset_path, "test_set.pt"))
+
+    
+
+    train_dataloader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
+    val_dataloader = DataLoader(val_set, batch_size=args.batch_size, shuffle=True)
+    test_dataloader = DataLoader(test_set, batch_size=args.batch_size, shuffle=True)
+
     trainer.fit(model, train_dataloader, val_dataloader)
     
     # 在code_test模式下直接测试，不使用checkpoint
@@ -199,6 +200,12 @@ if __name__ == "__main__":
     parser.add_argument('--dataset_info_path', type=str)
     parser.add_argument('--spec_type', type=str, choices=['h_nmr', 'c_nmr', 'ms'], default='h_nmr')
     parser.add_argument('--label_type', type=str, choices=['origin', 'mapped'], required=True)
+
+    parser.add_argument('--num_layers', type=int, default=4)
+    parser.add_argument('--num_heads', type=int, default=4)
+    parser.add_argument('--mult_embed_dim', type=int, default=128)
+    parser.add_argument('--nH_embed_dim', type=int, default=64)
+    parser.add_argument('--c_w_embed_dim', type=int, default=32)
 
     parser.add_argument('--code_test', action='store_true')
     parser.add_argument('--warm_up_step', type=int, default=3000)
