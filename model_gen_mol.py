@@ -6,8 +6,36 @@ import math
 import copy
 from transformers import PreTrainedTokenizerFast
 import rdkit.Chem as Chem
-from model import Embeddings, PeakGraphModule
+from model import PeakGraphModule
 
+def pad_smiles_ids(smiles_ids_list, smiles_len, pad_token=0):
+    """
+    将一个list中的smiles_ids补齐成tensor batch，同时返回padding mask
+    """
+    max_length = max(smiles_len)
+    
+    padded_smiles_ids = []
+    padding_masks = []
+    for ids in smiles_ids_list:
+        pad_len = max_length - len(ids)
+        padded_ids = ids + [pad_token] * pad_len
+        padded_smiles_ids.append(padded_ids)
+        
+        # 创建padding mask: 1表示真实token，0表示padding token
+        mask = [1] * len(ids) + [0] * pad_len
+        padding_masks.append(mask)
+
+    return torch.tensor(padded_smiles_ids, dtype=torch.long), torch.tensor(padding_masks, dtype=torch.bool)
+
+class Embeddings(nn.Module):
+    def __init__(self, d_model, vocab):
+        super(Embeddings, self).__init__()
+        self.lut = nn.Embedding(vocab, d_model)
+        self.d_model = d_model
+
+    def forward(self, x):
+        return self.lut(x) * math.sqrt(self.d_model)
+    
 def clones(module, N):
     "Produce N identical layers."
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
@@ -201,32 +229,24 @@ class DecoderLayer(nn.Module):
     
 class NMR2MolDecoder(nn.Module):
     def __init__(self, 
-                 smiles_tokenizer_path,
+                 smiles_vocab_size,
                  d_model=512, d_ff=2048, 
                  decoder_head=8, N_decoder_layer=4, dropout=0.1, 
                  ):
         super().__init__()
+        c = copy.deepcopy
         
-
-        self.smiles_tokenizer = PreTrainedTokenizerFast(tokenizer_file=smiles_tokenizer_path,
-                                                        bos_token="[BOS]",
-                                                        eos_token="[EOS]",
-                                                        pad_token="[PAD]",
-                                                        unk_token="[UNK]",
-                                                        padding_side="right" )
-        self.smiles_vocab_size = len(self.smiles_tokenizer.get_vocab())
+        self.smiles_vocab_size = smiles_vocab_size
+        
+        pe = PositionalEncoding(d_model, dropout=0.1)
         self.smiles_embed = nn.Sequential(Embeddings(d_model=d_model, vocab=self.smiles_vocab_size),
                                           c(pe))
 
-        c = copy.deepcopy
-        pe = PositionalEncoding(d_model, dropout=0.1)
         multi_att = MultiHeadedAttention(h=decoder_head, d_model=d_model,
                                            dropout=dropout)
         ff = PositionwiseFeedForward(d_model=d_model, d_ff=d_ff, dropout=0.1)
         self.decoder = Decoder(DecoderLayer(d_model, c(multi_att), c(multi_att), c(ff), dropout), N_decoder_layer)
 
-        
-        
         self.lm_head = nn.Linear(d_model, self.smiles_vocab_size)
 
         self.criterion = LabelSmoothing(size=self.smiles_vocab_size,padding_idx=0,smoothing=0.1)
@@ -283,7 +303,7 @@ class NMR2MolDecoder(nn.Module):
             src = src.repeat_interleave(n_beams, dim=0)
             src_mask = src_mask.repeat_interleave(n_beams,dim=0)
 
-        return self.smiles_decoder(smiles_embed,
+        return self.decoder(smiles_embed,
                                    memory=src,
                                    src_mask=src_mask, 
                                    tgt_mask=tgt_mask,
@@ -302,7 +322,7 @@ class NMR2MolDecoder(nn.Module):
     
     
 
-class NMR2MolGenerator(pl.LightningModule):
+class NMR2MolGenerator_(pl.LightningModule):
     def __init__(self, mult_class_num, nH_class_num, 
                  smiles_tokenizer_path,
                  # NMR graph encoder
@@ -317,24 +337,53 @@ class NMR2MolGenerator(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
 
+        self.smiles_tokenizer = PreTrainedTokenizerFast(tokenizer_file=smiles_tokenizer_path,
+                                                        bos_token="[BOS]",
+                                                        eos_token="[EOS]",
+                                                        pad_token="[PAD]",
+                                                        unk_token="[UNK]",
+                                                        padding_side="right" )
+        smiles_vocab_size = len(self.smiles_tokenizer.get_vocab())
+        
+
         self.graph_encoder = PeakGraphModule(mult_class_num=mult_class_num, nH_class_num=nH_class_num, 
                                 mult_embed_dim=mult_embed_dim, nH_embed_dim=nH_embed_dim, c_w_embed_dim=c_w_embed_dim,
                                 num_layers=num_layers, num_heads=num_heads)
-        self.smiles_decoder = NMR2MolDecoder(smiles_tokenizer_path,
+        self.smiles_decoder = NMR2MolDecoder(smiles_vocab_size,
                                              d_model=d_model, d_ff=d_ff, 
                                              decoder_head=decoder_head, 
                                              N_decoder_layer=N_decoder_layer, 
                                              dropout=dropout)
+        
+        self.d_model = d_model
+        self.warm_up_step = warm_up_step
+        self.lr = lr
 
     def _get_src(self, batch, node_embeddings):
-        src = node_embeddings[batch]
-        src_mask = torch.ones_like(src, dtype=torch.bool)
+        # 使用to_dense_batch将稀疏的node_embeddings转换为密集的batch格式
+        # src shape: (batch_size, max_nodes, embedding_dim)
+        # src_mask shape: (batch_size, 1, max_nodes)
+        from torch_geometric.utils import to_dense_batch
+        
+        print(node_embeddings.shape)
+        src, src_mask = to_dense_batch(node_embeddings, batch)
+        print(src.shape)
+        
+        # 验证梯度流 - 如果node_embeddings需要梯度，src也应该需要梯度
+        if node_embeddings.requires_grad:
+            print(f"node_embeddings requires_grad: {node_embeddings.requires_grad}")
+            print(f"src requires_grad: {src.requires_grad}")
+            print(f"src.grad_fn: {src.grad_fn}")
+        
+        # src_mask需要调整维度以匹配transformer的期望格式
+        src_mask = src_mask.unsqueeze(1)  # (batch_size, 1, max_nodes)
+        
         return src, src_mask
     
-    def forward(self, data):
+    def forward(self, data, padding_smiles_ids, padding_smiles_masks):
         node_embeddings  = self.graph_encoder.encode(data)
         src, src_mask = self._get_src(data.batch, node_embeddings)
-        logits = self.smiles_decoder(data.smiles_ids, data.smiles_att_mask, src, src_mask)
+        logits = self.smiles_decoder(padding_smiles_ids, padding_smiles_masks, src, src_mask)
         return logits
     
     def _cal_loss(self, logits, tgt, norm):
@@ -352,6 +401,18 @@ class NMR2MolGenerator(pl.LightningModule):
             / norm
         )
         return sloss, preds
+    
+    
+    def _postprocess_smiles(self, decoded_str):
+        if '[BOS]' in decoded_str:
+            split_list = decoded_str.split('[BOS]')
+            if len(split_list) == 0: return None
+            else: decoded_str = split_list[-1]
+        if '[EOS]' in decoded_str:
+            split_list = decoded_str.split('[EOS]')
+            if len(split_list) == 0: return None
+            else: decoded_str = split_list[0]
+        return ''.join(decoded_str.split(' '))
     
     def _cal_mol_acc(self, preds, tgts):
         preds = self.smiles_tokenizer.batch_decode(preds.tolist())
@@ -379,69 +440,42 @@ class NMR2MolGenerator(pl.LightningModule):
         # print(correct_pred/len(preds)) 
         return correct_pred/len(preds)
     
-    def _postprocess_smiles(self, decoded_str):
-        if '[BOS]' in decoded_str:
-            split_list = decoded_str.split('[BOS]')
-            if len(split_list) == 0: return None
-            else: decoded_str = split_list[-1]
-        if '[EOS]' in decoded_str:
-            split_list = decoded_str.split('[EOS]')
-            if len(split_list) == 0: return None
-            else: decoded_str = split_list[0]
-        return ''.join(decoded_str.split(' '))
-    
     def training_step(self, batch, batch_idx):
         
         batch_size = len(batch.id)
-        logits = self(batch)
+        padding_smiles_ids, padding_smiles_masks = pad_smiles_ids(batch.smiles_ids, batch.smiles_len)
+        logits = self(batch, padding_smiles_ids, padding_smiles_masks)
 
-        smiles_pred_loss, preds = self._cal_loss(logits, self.tgt_y, norm=self.ntokens)
-        mol_acc = self._cal_mol_acc(preds, batch.smiles_ids)
+        smiles_pred_loss, _ = self._cal_loss(logits, self.tgt_y, norm=self.ntokens)
 
-        # 提取目标：batch.masked_node_target 是 dict of tensors
-        loss, loss_dic = self.compute_multitask_loss(pred, batch.masked_node_target)
-        self.log("train_loss", loss, batch_size=batch_size)
-        self.log("train_loss_centroid", loss_dic["loss_centroid"], batch_size=batch_size)
-        self.log("train_loss_width", loss_dic["loss_width"], batch_size=batch_size)
-        self.log("train_loss_nH", loss_dic["loss_nH"], batch_size=batch_size)
-        self.log("train_loss_mult", loss_dic["loss_mult"], batch_size=batch_size)
-        return loss
+        self.log("train_loss", smiles_pred_loss, batch_size=batch_size)
+        return smiles_pred_loss
     
     def validation_step(self, batch, batch_idx):
         batch_size = len(batch.id)
-        pred = self(batch)
+        padding_smiles_ids, padding_smiles_masks = pad_smiles_ids(batch.smiles_ids, batch.smiles_len)
+        logits = self(batch, padding_smiles_ids, padding_smiles_masks)
+
+        smiles_pred_loss, preds = self._cal_loss(logits, self.tgt_y, norm=self.ntokens)
+        acc = self._cal_mol_acc(preds, self.tgt_y)
 
         # 提取目标：batch.masked_node_target 是 dict of tensors
-        loss, loss_dic = self.compute_multitask_loss(pred, batch.masked_node_target)
-        self.log("val_loss", loss, batch_size=batch_size)
-        self.log("val_loss_centroid", loss_dic["loss_centroid"], batch_size=batch_size)
-        self.log("val_loss_width", loss_dic["loss_width"], batch_size=batch_size)
-        self.log("val_loss_nH", loss_dic["loss_nH"], batch_size=batch_size)
-        self.log("val_loss_mult", loss_dic["loss_mult"], batch_size=batch_size)
-        acc_nH, acc_mult, nH_auc, mult_auc = self.compute_accuracy_auc(pred, batch.masked_node_target)
-        self.log("val_acc_nH", acc_nH, batch_size=batch_size)
-        self.log("val_auc_nH", nH_auc, batch_size=batch_size)
-        self.log("val_acc_mult", acc_mult, batch_size=batch_size)
-        self.log("val_auc_mult", mult_auc, batch_size=batch_size)
-        return loss
+        self.log("val_loss", smiles_pred_loss, batch_size=batch_size)
+        self.log("val_acc", acc, batch_size=batch_size)
+        return smiles_pred_loss
     
     def test_step(self, batch, batch_idx):
         batch_size = len(batch.id)
-        pred = self(batch)
+        padding_smiles_ids, padding_smiles_masks = pad_smiles_ids(batch.smiles_ids, batch.smiles_len)
+        logits = self(batch, padding_smiles_ids, padding_smiles_masks)
+
+        smiles_pred_loss, preds = self._cal_loss(logits, self.tgt_y, norm=self.ntokens)
+        acc = self._cal_mol_acc(preds, self.tgt_y)
 
         # 提取目标：batch.masked_node_target 是 dict of tensors
-        loss, loss_dic = self.compute_multitask_loss(pred, batch.masked_node_target)
-        self.log("test_loss", loss, batch_size=batch_size)
-        self.log("test_loss_centroid", loss_dic["loss_centroid"], batch_size=batch_size)
-        self.log("test_loss_width", loss_dic["loss_width"], batch_size=batch_size)
-        self.log("test_loss_nH", loss_dic["loss_nH"], batch_size=batch_size)
-        self.log("test_loss_mult", loss_dic["loss_mult"], batch_size=batch_size)
-        acc_nH, acc_mult, nH_auc, mult_auc = self.compute_accuracy_auc(pred, batch.masked_node_target)
-        self.log("test_acc_nH", acc_nH, batch_size=batch_size)
-        self.log("test_auc_nH", nH_auc, batch_size=batch_size)
-        self.log("test_acc_mult", acc_mult, batch_size=batch_size)
-        self.log("test_auc_mult", mult_auc, batch_size=batch_size)
-        return loss
+        self.log("val_loss", smiles_pred_loss, batch_size=batch_size)
+        self.log("val_acc", acc, batch_size=batch_size)
+        return smiles_pred_loss
 
     
     
@@ -459,7 +493,7 @@ class NMR2MolGenerator(pl.LightningModule):
             if step == 0:
                 step = 1
             lr_scale = 1 * (
-                self.in_node_dim ** (-0.5) * min(step ** (-0.5), step * self.warm_up_step ** (-1.5))
+                self.d_model ** (-0.5) * min(step ** (-0.5), step * self.warm_up_step ** (-1.5))
             )
 
             return lr_scale

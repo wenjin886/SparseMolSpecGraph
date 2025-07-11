@@ -1,12 +1,15 @@
 import pandas as pd
 import torch
-from torch_geometric.data import Data
+from torch_geometric.data import Data, Batch
 from torch_geometric.loader import DataLoader
 import numpy as np
 import os
 import re
 import json
 from tqdm import tqdm
+
+from transformers import PreTrainedTokenizerFast
+from smiles_tokenizer import split_smiles
 
 def fully_connected_edge_index(num_nodes):
     # 生成 [0, 0, ..., 1, 1, ..., n-1, n-1]
@@ -232,6 +235,22 @@ def generate_masked_node_dataset(unmasked_dataset_path, save_name):
     
     torch.save(masked_dataset, os.path.join(os.path.dirname(unmasked_dataset_path), save_name))
 
+def generate_smiles_ids_dataset(unmasked_dataset_path, smiles_tokenizer_path, save_name):
+    unmaksed_dataset = torch.load(unmasked_dataset_path)
+    tokenizer = PreTrainedTokenizerFast(tokenizer_file=smiles_tokenizer_path,
+                                        bos_token="[BOS]",
+                                        eos_token="[EOS]",
+                                        pad_token="[PAD]",
+                                        unk_token="[UNK]",
+                                        padding_side="right" )
+    smiles_dataset = []
+    for data_i in tqdm(unmaksed_dataset, total=len(unmaksed_dataset)):
+        splitted_smiles = " ".join(split_smiles(data_i.smiles))
+        data_i.smiles_ids = tokenizer.encode(splitted_smiles)
+        data_i.smiles_len = len(data_i.smiles_ids)
+        smiles_dataset.append(data_i)
+    torch.save(smiles_dataset, os.path.join(os.path.dirname(unmasked_dataset_path), save_name))
+
 
 if __name__ == "__main__":
 
@@ -247,7 +266,11 @@ if __name__ == "__main__":
     # processing_hnmr_cls_label(dataset_path, dataset_info_path,
     #                           mult_map_info_path, nh_map_info_path, save_path=dir_path)
 
-    dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/h_nmr_label_mapped.pt"
-    generate_masked_node_dataset(dataset_path, "masked_h_nmr_label_mapped.pt")
+    # dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/h_nmr_label_mapped.pt"
+    # generate_masked_node_dataset(dataset_path, "masked_h_nmr_label_mapped.pt")
+
+    smiles_tokenizer_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/smiles_tokenizer_fast/tokenizer.json"
+    dataset_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/example_hnmr.pt"
+    generate_smiles_ids_dataset(dataset_path, smiles_tokenizer_path, "example_hnmr_with_smiles_ids.pt")
     
 
