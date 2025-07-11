@@ -269,8 +269,8 @@ if __name__ == "__main__":
     # dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/h_nmr_label_mapped.pt"
     # generate_masked_node_dataset(dataset_path, "masked_h_nmr_label_mapped.pt")
 
-    smiles_tokenizer_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/smiles_tokenizer_fast/tokenizer.json"
-    dataset_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/example_hnmr.pt"
-    generate_smiles_ids_dataset(dataset_path, smiles_tokenizer_path, "example_hnmr_with_smiles_ids.pt")
+    smiles_tokenizer_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json"
+    dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/h_nmr_label_mapped.pt"
+    generate_smiles_ids_dataset(dataset_path, smiles_tokenizer_path, "h_nmr_label_mapped_with_smiles_ids.pt")
     
 

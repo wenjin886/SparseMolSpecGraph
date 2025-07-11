@@ -283,5 +283,5 @@ def main(dataset_path, tokenizer_save_path):
     wrapped_tokenizer.save_pretrained(osp.join(tokenizer_save_path, 'smiles_tokenizer_fast'))
 
 if __name__ == "__main__":
-    dataset_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/example_hnmr.pt"
+    dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/h_nmr.pt"
     main(dataset_path=dataset_path, tokenizer_save_path=osp.dirname(dataset_path))
