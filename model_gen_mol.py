@@ -2,10 +2,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
+from torch_geometric.utils import to_dense_batch
+
+from transformers import (PreTrainedTokenizerFast, GenerationMixin,
+                          GenerationConfig, PretrainedConfig,
+                          BeamSearchScorer)
+from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
+
 import math
 import copy
-from transformers import PreTrainedTokenizerFast
 import rdkit.Chem as Chem
+
 from model import PeakGraphModule
 
 def pad_smiles_ids(smiles_ids_list, smiles_len, pad_token=0):
@@ -158,20 +165,17 @@ class  LabelSmoothing(nn.Module):
         self.true_dist = None
 
     def forward(self, x, target):
-        # print(x.size(1), self.size)
         assert x.size(1) == self.size
         true_dist = x.data.clone()
         true_dist.fill_(self.smoothing / (self.size - 2))
-        # print(x)
-        # print(target.data)
+ 
         true_dist.scatter_(1, target.data.unsqueeze(1), self.confidence)
         true_dist[:, self.padding_idx] = 0
         mask = torch.nonzero(target.data == self.padding_idx)
         if mask.dim() > 0:
             true_dist.index_fill_(0, mask.squeeze(), 0.0)
         self.true_dist = true_dist
-        # print(x)
-        # print(true_dist)
+
         return self.criterion(x, true_dist.clone().detach())
 
 class PositionalEncoding(nn.Module):
@@ -227,7 +231,7 @@ class DecoderLayer(nn.Module):
         x = self.sublayer[1](x, lambda x: self.src_attn(x, m, m, src_mask))
         return self.sublayer[2](x, self.feed_forward)
     
-class NMR2MolDecoder(nn.Module):
+class NMR2MolDecoder(nn.Module, GenerationMixin):
     def __init__(self, 
                  smiles_vocab_size,
                  d_model=512, d_ff=2048, 
@@ -251,6 +255,26 @@ class NMR2MolDecoder(nn.Module):
 
         self.criterion = LabelSmoothing(size=self.smiles_vocab_size,padding_idx=0,smoothing=0.1)
 
+        # Add generation_config for GenerationMixin
+        
+        self.generation_config = GenerationConfig()
+        
+        # Add config attribute for GenerationMixin
+        
+        self.config = PretrainedConfig()
+        self.config.is_encoder_decoder = False
+        self.config.vocab_size = smiles_vocab_size
+        self.config.pad_token_id = 0
+        self.config.bos_token_id = 1
+        self.config.eos_token_id = 2
+        
+        # Add base_model_prefix for GenerationMixin
+        self.base_model_prefix = "model"
+        # Add main_input_name for GenerationMixin
+        self.main_input_name = "input_ids"
+        # Add _supports_cache_class for GenerationMixin compatibility
+        self._supports_cache_class = False
+
         self.__init_weights__()
     
     def __init_weights__(self):
@@ -270,15 +294,9 @@ class NMR2MolDecoder(nn.Module):
         )
         return subsequent_mask == 0
     
-    def _get_tgt_mask(self, smiles_ids, smiles_att_mask):
-        """
-        tgt: 
-            smiles tokens, shape: B x len
-        """
-        # print("smiles_ids: ",smiles_ids.shape)
-
-        if smiles_att_mask is None:
-            # for generation
+    def _get_tgt_mask(self, smiles_ids, smiles_att_mask, for_generation=False):
+        # for_generation: True if generating, False if training/validation
+        if for_generation or smiles_ids.shape[1] == 1:
             self.tgt = smiles_ids
             self.tgt_y = smiles_ids
             tgt_mask = torch.ones(self.tgt.shape).bool().unsqueeze(-2).type_as(self.tgt.data)
@@ -288,11 +306,9 @@ class NMR2MolDecoder(nn.Module):
             self.tgt_y = smiles_ids[:, 1:]
             tgt_mask = smiles_att_mask[:, :-1].bool().unsqueeze(-2)
             tgt_mask = tgt_mask & self._subsequent_mask(self.tgt.shape[-1]).type_as(tgt_mask.data)
-
         self.ntokens = (self.tgt_y != 0).data.sum()
-
         return tgt_mask
-    
+
     def decode(self, smiles_ids, smiles_att_mask, src, src_mask):
         tgt_mask = self._get_tgt_mask(smiles_ids, smiles_att_mask)
         smiles_embed = self.smiles_embed(self.tgt)
@@ -303,26 +319,61 @@ class NMR2MolDecoder(nn.Module):
             src = src.repeat_interleave(n_beams, dim=0)
             src_mask = src_mask.repeat_interleave(n_beams,dim=0)
 
-        return self.decoder(smiles_embed,
-                                   memory=src,
-                                   src_mask=src_mask, 
-                                   tgt_mask=tgt_mask,
-                                   )
+        return self.decoder(x=smiles_embed,
+                            memory=src,
+                            src_mask=src_mask, 
+                            tgt_mask=tgt_mask)
     
-    def forward(self, smiles_ids, smiles_att_mask, src, src_mask):
+    def forward(self, input_ids, encoder_hidden_states, encoder_attention_mask, 
+                use_cache=False, past_key_values=None, **kwargs):
+        """
+        input_ids: (B, T)
+        encoder_hidden_states: src
+        encoder_attention_mask: src_mask
+        """
+        smiles_att_mask = torch.where(input_ids == 0, False, True).float()
+        for_generation = (use_cache or (past_key_values is not None)) or (input_ids.shape[1] == 1)
+        tgt_mask = self._get_tgt_mask(input_ids, smiles_att_mask, for_generation=for_generation)
+        tgt_embed = self.smiles_embed(self.tgt)
+        decoder_outputs = self.decoder(
+            x=tgt_embed,
+            memory=encoder_hidden_states,
+            src_mask=encoder_attention_mask, 
+            tgt_mask=tgt_mask
+        )
+        logits = self.lm_head(decoder_outputs)
         
-        dec_out = self.decode(smiles_ids, smiles_att_mask, src, src_mask)
-        
-        logits = F.log_softmax(self.lm_head(dec_out), dim=-1)
-
-        return logits
+        return CausalLMOutputWithCrossAttentions(logits=logits)
+    
+    def prepare_inputs_for_generation(self, input_ids, past_key_values=None, 
+                                      encoder_hidden_states=None, 
+                                      encoder_attention_mask=None, **kwargs):
+        return {
+            "input_ids": input_ids,
+            "encoder_hidden_states": encoder_hidden_states,
+            "encoder_attention_mask": encoder_attention_mask,
+            "past_key_values": past_key_values
+        }
+    
+    def get_output_embeddings(self):
+        return self.lm_head
+    
+    def set_output_embeddings(self, new_embeddings):
+        self.lm_head = new_embeddings
+    
+    def get_decoder(self):
+        return self.decoder
+    
+    @property
+    def device(self):
+        return next(self.parameters()).device
     
     
     
     
     
 
-class NMR2MolGenerator_(pl.LightningModule):
+class NMR2MolGenerator(pl.LightningModule):
     def __init__(self, mult_class_num, nH_class_num, 
                  smiles_tokenizer_path,
                  # NMR graph encoder
@@ -363,27 +414,25 @@ class NMR2MolGenerator_(pl.LightningModule):
         # 使用to_dense_batch将稀疏的node_embeddings转换为密集的batch格式
         # src shape: (batch_size, max_nodes, embedding_dim)
         # src_mask shape: (batch_size, 1, max_nodes)
-        from torch_geometric.utils import to_dense_batch
         
-        print(node_embeddings.shape)
         src, src_mask = to_dense_batch(node_embeddings, batch)
-        print(src.shape)
-        
-        # 验证梯度流 - 如果node_embeddings需要梯度，src也应该需要梯度
-        if node_embeddings.requires_grad:
-            print(f"node_embeddings requires_grad: {node_embeddings.requires_grad}")
-            print(f"src requires_grad: {src.requires_grad}")
-            print(f"src.grad_fn: {src.grad_fn}")
-        
-        # src_mask需要调整维度以匹配transformer的期望格式
-        src_mask = src_mask.unsqueeze(1)  # (batch_size, 1, max_nodes)
+        # src_mask需要调整维度以匹配transformer的期望格式，并转换为浮点类型
+        src_mask = src_mask.unsqueeze(1).float()  # (batch_size, 1, max_nodes)
         
         return src, src_mask
     
     def forward(self, data, padding_smiles_ids, padding_smiles_masks):
         node_embeddings  = self.graph_encoder.encode(data)
+        node_embeddings = node_embeddings.float()  # Ensure float dtype
         src, src_mask = self._get_src(data.batch, node_embeddings)
-        logits = self.smiles_decoder(padding_smiles_ids, padding_smiles_masks, src, src_mask)
+        if padding_smiles_masks.dtype == torch.bool:
+            padding_smiles_masks = padding_smiles_masks.float()
+        decoder_output = self.smiles_decoder( input_ids=padding_smiles_ids,  encoder_hidden_states=src, encoder_attention_mask=src_mask)
+        # Extract logits from the decoder output
+        if hasattr(decoder_output, 'logits'):
+            logits = decoder_output.logits
+        else:
+            logits = decoder_output
         return logits
     
     def _cal_loss(self, logits, tgt, norm):
@@ -404,6 +453,8 @@ class NMR2MolGenerator_(pl.LightningModule):
     
     
     def _postprocess_smiles(self, decoded_str):
+        if not isinstance(decoded_str, str):
+            decoded_str = str(decoded_str)
         if '[BOS]' in decoded_str:
             split_list = decoded_str.split('[BOS]')
             if len(split_list) == 0: return None
@@ -475,9 +526,7 @@ class NMR2MolGenerator_(pl.LightningModule):
         # 提取目标：batch.masked_node_target 是 dict of tensors
         self.log("val_loss", smiles_pred_loss, batch_size=batch_size)
         self.log("val_acc", acc, batch_size=batch_size)
-        return smiles_pred_loss
-
-    
+        return smiles_pred_loss 
     
     def configure_optimizers(self):
         # 使用 AdamW 优化器
@@ -506,7 +555,7 @@ class NMR2MolGenerator_(pl.LightningModule):
         # 返回优化器和调度器
         return [optimizer], [{"scheduler": scheduler, "interval": "step"}]
     
-    
+   
         
         
         
