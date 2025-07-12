@@ -253,7 +253,7 @@ class NMR2MolDecoder(nn.Module, GenerationMixin):
 
         self.lm_head = nn.Linear(d_model, self.smiles_vocab_size)
 
-        self.criterion = LabelSmoothing(size=self.smiles_vocab_size,padding_idx=0,smoothing=0.1)
+        
 
         # Add generation_config for GenerationMixin
         
@@ -409,6 +409,7 @@ class NMR2MolGenerator(pl.LightningModule):
         self.d_model = d_model
         self.warm_up_step = warm_up_step
         self.lr = lr
+        self.criterion = LabelSmoothing(size=smiles_vocab_size, padding_idx=0, smoothing=0.1)
 
     def _get_src(self, batch, node_embeddings):
         # 使用to_dense_batch将稀疏的node_embeddings转换为密集的batch格式
@@ -495,9 +496,9 @@ class NMR2MolGenerator(pl.LightningModule):
         
         batch_size = len(batch.id)
         padding_smiles_ids, padding_smiles_masks = pad_smiles_ids(batch.smiles_ids, batch.smiles_len)
-        logits = self(batch, padding_smiles_ids, padding_smiles_masks)
+        logits = self(batch, padding_smiles_ids.to(batch.id.device), padding_smiles_masks.to(batch.id.device))
 
-        smiles_pred_loss, _ = self._cal_loss(logits, self.tgt_y, norm=self.ntokens)
+        smiles_pred_loss, _ = self._cal_loss(logits, self.smiles_decoder.tgt_y, norm=self.smiles_decoder.ntokens)
 
         self.log("train_loss", smiles_pred_loss, batch_size=batch_size)
         return smiles_pred_loss
@@ -505,10 +506,10 @@ class NMR2MolGenerator(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         batch_size = len(batch.id)
         padding_smiles_ids, padding_smiles_masks = pad_smiles_ids(batch.smiles_ids, batch.smiles_len)
-        logits = self(batch, padding_smiles_ids, padding_smiles_masks)
+        logits = self(batch, padding_smiles_ids.to(batch.id.device), padding_smiles_masks.to(batch.id.device))
 
-        smiles_pred_loss, preds = self._cal_loss(logits, self.tgt_y, norm=self.ntokens)
-        acc = self._cal_mol_acc(preds, self.tgt_y)
+        smiles_pred_loss, preds = self._cal_loss(logits, self.smiles_decoder.tgt_y, norm=self.smiles_decoder.ntokens)
+        acc = self._cal_mol_acc(preds, self.smiles_decoder.tgt_y)
 
         # 提取目标：batch.masked_node_target 是 dict of tensors
         self.log("val_loss", smiles_pred_loss, batch_size=batch_size)
@@ -518,10 +519,10 @@ class NMR2MolGenerator(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         batch_size = len(batch.id)
         padding_smiles_ids, padding_smiles_masks = pad_smiles_ids(batch.smiles_ids, batch.smiles_len)
-        logits = self(batch, padding_smiles_ids, padding_smiles_masks)
+        logits = self(batch, padding_smiles_ids.to(batch.id.device), padding_smiles_masks.to(batch.id.device))
 
-        smiles_pred_loss, preds = self._cal_loss(logits, self.tgt_y, norm=self.ntokens)
-        acc = self._cal_mol_acc(preds, self.tgt_y)
+        smiles_pred_loss, preds = self._cal_loss(logits, self.smiles_decoder.tgt_y, norm=self.smiles_decoder.ntokens)
+        acc = self._cal_mol_acc(preds, self.smiles_decoder.tgt_y)
 
         # 提取目标：batch.masked_node_target 是 dict of tensors
         self.log("val_loss", smiles_pred_loss, batch_size=batch_size)
