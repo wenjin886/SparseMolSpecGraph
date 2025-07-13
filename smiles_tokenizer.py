@@ -66,7 +66,7 @@ def main(dataset_path, tokenizer_save_path):
         special_tokens=[("[BOS]", bos_token_id), ("[EOS]", eos_token_id)]
     )
 
-    tokenizer.save(osp.join(tokenizer_save_path, "smiles_tokenizer.json"))
+    tokenizer.save(osp.join(tokenizer_save_path, "new_smiles_tokenizer.json"))
 
     wrapped_tokenizer = PreTrainedTokenizerFast(
         tokenizer_object=tokenizer,
@@ -75,7 +75,7 @@ def main(dataset_path, tokenizer_save_path):
         bos_token = "[BOS]",
         eos_token = "[EOS]"
     )
-    wrapped_tokenizer.save_pretrained(osp.join(tokenizer_save_path, 'smiles_tokenizer_fast'))
+    wrapped_tokenizer.save_pretrained(osp.join(tokenizer_save_path, 'new_smiles_tokenizer_fast'))
 
 if __name__ == "__main__":
     dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/h_nmr.pt"
