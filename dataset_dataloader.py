@@ -8,8 +8,11 @@ import re
 import json
 from tqdm import tqdm
 
+import rdkit.Chem as Chem
+from rdkit.Chem import rdMolDescriptors
 from transformers import PreTrainedTokenizerFast
 from smiles_tokenizer import split_smiles
+from formula_tokenizer import split_formula
 
 def fully_connected_edge_index(num_nodes):
     # 生成 [0, 0, ..., 1, 1, ..., n-1, n-1]
@@ -235,9 +238,25 @@ def generate_masked_node_dataset(unmasked_dataset_path, save_name):
     
     torch.save(masked_dataset, os.path.join(os.path.dirname(unmasked_dataset_path), save_name))
 
-def generate_smiles_ids_and_formula_ids_dataset(unmasked_dataset_path, smiles_tokenizer_path, save_name):
+def generate_formula_dataset(dataset_path, save_name):
+    dataset = torch.load(dataset_path)
+    formula_dataset = []
+    for data_i in tqdm(dataset, total=len(dataset)):
+        formula = rdMolDescriptors.CalcMolFormula(Chem.MolFromSmiles(data_i.smiles))
+        data_i.formula = formula
+        formula_dataset.append(data_i)
+    torch.save(formula_dataset, os.path.join(os.path.dirname(dataset_path), save_name))
+    
+
+def generate_smiles_ids_and_formula_ids_dataset(unmasked_dataset_path, smiles_tokenizer_path, formula_tokenizer_path, save_name):
     unmaksed_dataset = torch.load(unmasked_dataset_path)
-    tokenizer = PreTrainedTokenizerFast(tokenizer_file=smiles_tokenizer_path,
+    smiles_tokenizer = PreTrainedTokenizerFast(tokenizer_file=smiles_tokenizer_path,
+                                        bos_token="[BOS]",
+                                        eos_token="[EOS]",
+                                        pad_token="[PAD]",
+                                        unk_token="[UNK]",
+                                        padding_side="right" )
+    formula_tokenizer = PreTrainedTokenizerFast(tokenizer_file=formula_tokenizer_path,
                                         bos_token="[BOS]",
                                         eos_token="[EOS]",
                                         pad_token="[PAD]",
@@ -245,10 +264,18 @@ def generate_smiles_ids_and_formula_ids_dataset(unmasked_dataset_path, smiles_to
                                         padding_side="right" )
     smiles_dataset = []
     for data_i in tqdm(unmaksed_dataset, total=len(unmaksed_dataset)):
+        
         splitted_smiles = " ".join(split_smiles(data_i.smiles))
-        data_i.smiles_ids = tokenizer.encode(splitted_smiles)
+        splitted_formula = " ".join(split_formula(data_i.formula))
+
+        data_i.smiles_ids = smiles_tokenizer.encode(splitted_smiles)
         data_i.smiles_len = len(data_i.smiles_ids)
+
+        data_i.formula_ids = formula_tokenizer.encode(splitted_formula)
+        data_i.formula_len = len(data_i.formula_ids)
+
         smiles_dataset.append(data_i)
+
     torch.save(smiles_dataset, os.path.join(os.path.dirname(unmasked_dataset_path), save_name))
 
 
@@ -269,8 +296,12 @@ if __name__ == "__main__":
     # dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/h_nmr_label_mapped.pt"
     # generate_masked_node_dataset(dataset_path, "masked_h_nmr_label_mapped.pt")
 
-    smiles_tokenizer_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json"
-    dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/h_nmr_label_mapped.pt"
-    generate_smiles_ids_and_formula_ids_dataset(dataset_path, smiles_tokenizer_path, "h_nmr_label_mapped_with_smiles_ids.pt")
+    # dataset_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/example_hnmr.pt"
+    # generate_formula_dataset(dataset_path, "example_hnmr_with_formula.pt")
+    
+    smiles_tokenizer_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/smiles_tokenizer_fast/tokenizer.json"
+    formula_tokenizer_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/formula_tokenizer_fast/tokenizer.json"
+    dataset_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/example_hnmr_with_formula.pt"
+    generate_smiles_ids_and_formula_ids_dataset(dataset_path, smiles_tokenizer_path, formula_tokenizer_path, "hnmr_with_smiles_and_formula_ids.pt")
     
 
