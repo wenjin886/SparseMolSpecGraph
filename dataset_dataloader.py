@@ -235,7 +235,7 @@ def generate_masked_node_dataset(unmasked_dataset_path, save_name):
     
     torch.save(masked_dataset, os.path.join(os.path.dirname(unmasked_dataset_path), save_name))
 
-def generate_smiles_ids_dataset(unmasked_dataset_path, smiles_tokenizer_path, save_name):
+def generate_smiles_ids_and_formula_ids_dataset(unmasked_dataset_path, smiles_tokenizer_path, save_name):
     unmaksed_dataset = torch.load(unmasked_dataset_path)
     tokenizer = PreTrainedTokenizerFast(tokenizer_file=smiles_tokenizer_path,
                                         bos_token="[BOS]",
@@ -271,6 +271,6 @@ if __name__ == "__main__":
 
     smiles_tokenizer_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json"
     dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/h_nmr_label_mapped.pt"
-    generate_smiles_ids_dataset(dataset_path, smiles_tokenizer_path, "h_nmr_label_mapped_with_smiles_ids.pt")
+    generate_smiles_ids_and_formula_ids_dataset(dataset_path, smiles_tokenizer_path, "h_nmr_label_mapped_with_smiles_ids.pt")
     
 
