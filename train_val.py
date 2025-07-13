@@ -30,7 +30,7 @@ def get_formatted_exp_name(exp_name, resume=False):
 
 def split_dataset(dataset_path, seed, save_dir_name):
     save_dir = osp.join(osp.dirname(dataset_path), save_dir_name)
-    if not osp.exists(save_dir): os.makedir(save_dir)
+    if not osp.exists(save_dir): os.makedirs(save_dir)
     print(f"Will Save splitted dataset in {save_dir}")
 
     dataset = torch.load(dataset_path)
@@ -43,7 +43,6 @@ def split_dataset(dataset_path, seed, save_dir_name):
     train_set = dataset[:int(0.85*num_data)]
     val_set = dataset[int(0.85*num_data):int(0.9*num_data)]
     test_set = dataset[int(0.9*num_data):]
-
     
     torch.save(train_set, osp.join(save_dir, "train_set.pt"))
     torch.save(val_set, osp.join(save_dir, "val_set.pt"))

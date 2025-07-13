@@ -443,13 +443,15 @@ class NMR2MolGenerator(pl.LightningModule):
         tgt
         norm: ntokens
         """
-        preds = torch.argmax(logits, dim=-1)
+        # preds = torch.argmax(logits, dim=-1)
+        log_probs = F.log_softmax(logits, dim=-1)
         sloss = (
             self.criterion(
-                logits.contiguous().view(-1, logits.size(-1)), tgt.contiguous().view(-1)
+                log_probs.contiguous().view(-1, log_probs.size(-1)), tgt.contiguous().view(-1)
             )
             / norm
         )
+        preds = torch.argmax(log_probs, dim=-1)
         return sloss, preds
     
     
@@ -471,6 +473,7 @@ class NMR2MolGenerator(pl.LightningModule):
         tgts = self.smiles_tokenizer.batch_decode(tgts.tolist())
 
         correct_pred = 0
+        total = len(preds)  # 所有生成的数量
         for pred, tgt in zip(preds, tgts):
             
             pred = self._postprocess_smiles(pred)
@@ -486,11 +489,13 @@ class NMR2MolGenerator(pl.LightningModule):
             try:
                 tgt = Chem.MolToSmiles(Chem.MolFromSmiles(tgt))
             except Exception as e:
-                return -1
+                print(f"tgt has problems: {tgt}")
+                continue
+                # return -1
             if pred == tgt: correct_pred += 1
 
         # print(correct_pred/len(preds)) 
-        return correct_pred/len(preds)
+        return correct_pred/len(preds) if total > 0 else 0.0
     
     def training_step(self, batch, batch_idx):
         
@@ -525,8 +530,8 @@ class NMR2MolGenerator(pl.LightningModule):
         acc = self._cal_mol_acc(preds, self.smiles_decoder.tgt_y)
 
         # 提取目标：batch.masked_node_target 是 dict of tensors
-        self.log("val_loss", smiles_pred_loss, batch_size=batch_size)
-        self.log("val_acc", acc, batch_size=batch_size)
+        self.log("test_loss", smiles_pred_loss, batch_size=batch_size)
+        self.log("test_acc", acc, batch_size=batch_size)
         return smiles_pred_loss 
     
     def configure_optimizers(self):
