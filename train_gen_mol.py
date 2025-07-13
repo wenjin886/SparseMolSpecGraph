@@ -86,11 +86,21 @@ def main(args):
                     mult_class_num=len(MULTIPLETS), 
                     nH_class_num=len(NUM_H), 
                     smiles_tokenizer_path=args.smiles_tokenizer_path,
-                    mult_embed_dim=args.mult_embed_dim, nH_embed_dim=args.nH_embed_dim, c_w_embed_dim=args.c_w_embed_dim,
+                    mult_embed_dim=args.mult_embed_dim, 
+                    nH_embed_dim=args.nH_embed_dim, 
+                    c_w_embed_dim=args.c_w_embed_dim,
                     num_layers=args.num_layers, num_heads=args.num_heads,
                     mult_class_weights=None,
+                    # formula and spec_formula_encoder
+                    use_formula=args.use_formula,
+                    formula_vocab_size=args.formula_vocab_size,
+                    spec_formula_encoder_head=args.spec_formula_encoder_head,
+                    spec_formula_encoder_layer=args.spec_formula_encoder_layer,
+                    # decoder
                     d_model=args.d_model, d_ff=args.d_ff, 
-                    decoder_head=args.decoder_head, N_decoder_layer=args.N_decoder_layer, dropout=args.dropout, 
+                    decoder_head=args.decoder_head, N_decoder_layer=args.N_decoder_layer, 
+                    dropout=args.dropout, 
+                    # training
                     warm_up_step=args.warm_up_step, lr=args.lr)
         print(model)
     
@@ -209,7 +219,7 @@ def predict_step(batch, model):
     predictions = model.smiles_tokenizer.batch_decode(output_ids, skip_special_tokens=True)
     return model._postprocess_smiles(predictions)
 
-def generate_smiles():
+def generate_smiles(model, dataset):
 
     dataset_info_path = "../Dataset/h_nmr.json"
     with open(dataset_info_path, "r") as f:
@@ -227,7 +237,7 @@ def generate_smiles():
                                                             padding_side="right" )
     # len(smiles_tokenizer.get_vocab())
 
-    dataset = torch.load("../example_data/example_hnmr_with_smiles_ids.pt")
+    smiles_dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
     
     for batch in smiles_dataloader:
         

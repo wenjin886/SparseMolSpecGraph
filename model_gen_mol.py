@@ -200,18 +200,6 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[:, : x.size(1)].requires_grad_(False)
         return self.dropout(x)  
     
-class Decoder(nn.Module):
-    "Generic N layer decoder with masking."
-
-    def __init__(self, layer, N):
-        super(Decoder, self).__init__()
-        self.layers = clones(layer, N)
-        self.norm = LayerNorm(layer.size)
-
-    def forward(self, x, memory, src_mask, tgt_mask):
-        for layer in self.layers:
-            x = layer(x, memory, src_mask, tgt_mask)
-        return self.norm(x)
 
 class DecoderLayer(nn.Module):
     "Decoder is made of self-attn, src-attn, and feed forward (defined below)"
@@ -231,29 +219,109 @@ class DecoderLayer(nn.Module):
         x = self.sublayer[1](x, lambda x: self.src_attn(x, m, m, src_mask))
         return self.sublayer[2](x, self.feed_forward)
     
-class NMR2MolDecoder(nn.Module, GenerationMixin):
+class Decoder(nn.Module):
+    "Generic N layer decoder with masking."
+
+    def __init__(self, layer, N):
+        super(Decoder, self).__init__()
+        self.layers = clones(layer, N)
+        self.norm = LayerNorm(layer.size)
+
+    def forward(self, x, memory, src_mask, tgt_mask):
+        for layer in self.layers:
+            x = layer(x, memory, src_mask, tgt_mask)
+        return self.norm(x)
+    
+class EncoderLayer(nn.Module):
+    "Encoder is made up of self-attn and feed forward (defined below)"
+
+    def __init__(self, size, self_attn, feed_forward, dropout):
+        super(EncoderLayer, self).__init__()
+        self.self_attn = self_attn
+        self.feed_forward = feed_forward
+        self.sublayer = clones(SublayerConnection(size, dropout), 2)
+        self.size = size
+
+    def forward(self, x, mask):
+        "Follow Figure 1 (left) for connections."
+        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
+        return self.sublayer[1](x, self.feed_forward)
+
+class Encoder(nn.Module):
+    "Core encoder is a stack of N layers"
+
+    def __init__(self, layer, N):
+        super(Encoder, self).__init__()
+        self.layers = clones(layer, N)
+        self.norm = LayerNorm(layer.size)
+
+    def forward(self, x, mask):
+        "Pass the input (and mask) through each layer in turn."
+        for layer in self.layers:
+            x = layer(x, mask)
+        return self.norm(x)
+
+class NMRFormulaEncoder(nn.Module):
+    def __init__(self, 
+                 formula_vocab_size,
+                 d_model=512, d_ff=2048, 
+                 encoder_head=8, encoder_layer=4,
+                 dropout=0.1, 
+                 ):
+        super().__init__()
+
+        self.formula_vocab_size = formula_vocab_size
+        
+        c = copy.deepcopy
+        pe = PositionalEncoding(d_model, dropout=dropout)
+        self.formula_embed = nn.Sequential(Embeddings(d_model=d_model, vocab=self.formula_vocab_size), c(pe))
+
+        encoder_attn = MultiHeadedAttention(h=encoder_head,d_model=d_model)
+        ff = PositionwiseFeedForward(d_model=d_model, d_ff=d_ff, dropout=dropout)
+        self.spec_formula_encoder = Encoder(EncoderLayer(d_model, c(encoder_attn),c(ff), dropout), N=encoder_layer)
+
+        self.__init_weights__()
+    
+    def __init_weights__(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Embedding):
+                nn.init.xavier_normal_(m.weight)
+    
+    def forward(self, spec_hidden_states, spec_attention_mask, formula_ids, formula_att_mask):
+        formula_embed = self.formula_embed(formula_ids)
+        src = torch.cat([spec_hidden_states, formula_embed], dim=1) # (batch_size N_spec + N_formula, d_model)
+        src_mask = torch.cat([spec_attention_mask, formula_att_mask], dim=-1) # (batch_size, 1, N_spec + N_formula)
+        src_embed = self.spec_formula_encoder(src, src_mask)
+
+        return src_embed, src_mask
+        
+        
+        
+
+class NMR2MolEncoderDecoder(nn.Module, GenerationMixin):
     def __init__(self, 
                  smiles_vocab_size,
+                 formula_vocab_size,
                  d_model=512, d_ff=2048, 
+                 encoder_head=8, encoder_layer=4,
                  decoder_head=8, N_decoder_layer=4, dropout=0.1, 
                  ):
         super().__init__()
         c = copy.deepcopy
         
         self.smiles_vocab_size = smiles_vocab_size
-        
         pe = PositionalEncoding(d_model, dropout=0.1)
-        self.smiles_embed = nn.Sequential(Embeddings(d_model=d_model, vocab=self.smiles_vocab_size),
-                                          c(pe))
-
-        multi_att = MultiHeadedAttention(h=decoder_head, d_model=d_model,
-                                           dropout=dropout)
-        ff = PositionwiseFeedForward(d_model=d_model, d_ff=d_ff, dropout=0.1)
+        self.smiles_embed = nn.Sequential(Embeddings(d_model=d_model, vocab=self.smiles_vocab_size), c(pe))
+        
+        multi_att = MultiHeadedAttention(h=decoder_head, d_model=d_model, dropout=dropout)
+        ff = PositionwiseFeedForward(d_model=d_model, d_ff=d_ff, dropout=dropout)
         self.decoder = Decoder(DecoderLayer(d_model, c(multi_att), c(multi_att), c(ff), dropout), N_decoder_layer)
 
         self.lm_head = nn.Linear(d_model, self.smiles_vocab_size)
-
-        
 
         # Add generation_config for GenerationMixin
         
@@ -309,20 +377,21 @@ class NMR2MolDecoder(nn.Module, GenerationMixin):
         self.ntokens = (self.tgt_y != 0).data.sum()
         return tgt_mask
 
-    def decode(self, smiles_ids, smiles_att_mask, src, src_mask):
-        tgt_mask = self._get_tgt_mask(smiles_ids, smiles_att_mask)
-        smiles_embed = self.smiles_embed(self.tgt)
+    # def decode(self, smiles_ids, smiles_att_mask, src, src_mask):
+    #     tgt_mask = self._get_tgt_mask(smiles_ids, smiles_att_mask)
+    #     smiles_embed = self.smiles_embed(self.tgt)
 
-        # for beam search
-        if (src.shape[0] < smiles_embed.shape[0]) and (smiles_embed.shape[0] % src.shape[0] == 0):
-            n_beams = int(smiles_embed.shape[0] / src.shape[0])
-            src = src.repeat_interleave(n_beams, dim=0)
-            src_mask = src_mask.repeat_interleave(n_beams,dim=0)
+    #     # for beam search
+    #     if (src.shape[0] < smiles_embed.shape[0]) and (smiles_embed.shape[0] % src.shape[0] == 0):
+    #         n_beams = int(smiles_embed.shape[0] / src.shape[0])
+    #         src = src.repeat_interleave(n_beams, dim=0)
+    #         src_mask = src_mask.repeat_interleave(n_beams,dim=0)
 
-        return self.decoder(x=smiles_embed,
-                            memory=src,
-                            src_mask=src_mask, 
-                            tgt_mask=tgt_mask)
+    #     return self.decoder(x=smiles_embed,
+    #                         memory=src,
+    #                         src_mask=src_mask, 
+    #                         tgt_mask=tgt_mask)
+    
     
     def forward(self, input_ids, encoder_hidden_states, encoder_attention_mask, 
                 use_cache=False, past_key_values=None, **kwargs):
@@ -335,6 +404,7 @@ class NMR2MolDecoder(nn.Module, GenerationMixin):
         for_generation = (use_cache or (past_key_values is not None)) or (input_ids.shape[1] == 1)
         tgt_mask = self._get_tgt_mask(input_ids, smiles_att_mask, for_generation=for_generation)
         tgt_embed = self.smiles_embed(self.tgt)
+
         decoder_outputs = self.decoder(
             x=tgt_embed,
             memory=encoder_hidden_states,
@@ -380,6 +450,11 @@ class NMR2MolGenerator(pl.LightningModule):
                  mult_embed_dim=16, nH_embed_dim=8, c_w_embed_dim=8,
                  num_layers=4, num_heads=4,
                  mult_class_weights=None,
+                 # formula
+                 use_formula=True,
+                 formula_vocab_size=None,
+                 spec_formula_encoder_head=8, 
+                 spec_formula_encoder_layer=4,
                  # SMILES decoder
                  d_model=512, d_ff=2048, 
                  decoder_head=8, N_decoder_layer=4, dropout=0.1, 
@@ -400,7 +475,19 @@ class NMR2MolGenerator(pl.LightningModule):
         self.graph_encoder = PeakGraphModule(mult_class_num=mult_class_num, nH_class_num=nH_class_num, 
                                 mult_embed_dim=mult_embed_dim, nH_embed_dim=nH_embed_dim, c_w_embed_dim=c_w_embed_dim,
                                 num_layers=num_layers, num_heads=num_heads)
-        self.smiles_decoder = NMR2MolDecoder(smiles_vocab_size,
+
+        spec_embed_dim = self.graph_encoder.in_node_dim
+        self.spec_embed_proj = nn.Linear(spec_embed_dim, d_model)
+        
+        self.use_formula = use_formula
+        if self.use_formula:
+            self.spec_formula_encoder = NMRFormulaEncoder(formula_vocab_size,
+                                                     d_model=d_model, d_ff=d_ff, 
+                                                     encoder_head=spec_formula_encoder_head, 
+                                                     encoder_layer=spec_formula_encoder_layer,
+                                                     dropout=dropout)
+            
+        self.smiles_decoder = NMR2MolEncoderDecoder(smiles_vocab_size,
                                              d_model=d_model, d_ff=d_ff, 
                                              decoder_head=decoder_head, 
                                              N_decoder_layer=N_decoder_layer, 
@@ -411,24 +498,35 @@ class NMR2MolGenerator(pl.LightningModule):
         self.lr = lr
         self.criterion = LabelSmoothing(size=smiles_vocab_size, padding_idx=0, smoothing=0.1)
 
-    def _get_src(self, batch, node_embeddings):
+    def _get_spec_embed(self, batch, node_embeddings):
         # 使用to_dense_batch将稀疏的node_embeddings转换为密集的batch格式
         # src shape: (batch_size, max_nodes, embedding_dim)
         # src_mask shape: (batch_size, 1, max_nodes)
         
-        src, src_mask = to_dense_batch(node_embeddings, batch)
+        spec_embed, spec_mask = to_dense_batch(node_embeddings, batch)
         # src_mask需要调整维度以匹配transformer的期望格式，并转换为浮点类型
-        src_mask = src_mask.unsqueeze(1).float()  # (batch_size, 1, max_nodes)
+        spec_mask = spec_mask.unsqueeze(1).float()  # (batch_size, 1, max_nodes)
         
-        return src, src_mask
+        return spec_embed, spec_mask
     
-    def forward(self, data, padding_smiles_ids, padding_smiles_masks):
+    def encoder(self, data, padding_formula_ids=None, padding_formula_att_mask=None):
         node_embeddings  = self.graph_encoder.encode(data)
         node_embeddings = node_embeddings.float()  # Ensure float dtype
-        src, src_mask = self._get_src(data.batch, node_embeddings)
+        src_embed, src_mask = self._get_spec_embed(data.batch, node_embeddings) # spec_embed: (batch_size, max_nodes, in_node_dim)
+        src_embed = self.spec_embed_proj(src_embed) # (batch_size, max_nodes, d_model)
+
+        if self.use_formula:
+            src_embed, src_mask = self.spec_formula_encoder(src_embed, src_mask, padding_formula_ids, padding_formula_att_mask)
+
+        return src_embed, src_mask
+    
+    def forward(self, data, padding_smiles_ids, padding_smiles_masks, padding_formula_ids=None, padding_formula_att_mask=None):
+        
+        src_embed, src_mask = self.encoder(data, padding_formula_ids, padding_formula_att_mask)
+
         if padding_smiles_masks.dtype == torch.bool:
             padding_smiles_masks = padding_smiles_masks.float()
-        decoder_output = self.smiles_decoder( input_ids=padding_smiles_ids,  encoder_hidden_states=src, encoder_attention_mask=src_mask)
+        decoder_output = self.smiles_decoder( input_ids=padding_smiles_ids,  encoder_hidden_states=src_embed, encoder_attention_mask=src_mask)
         # Extract logits from the decoder output
         if hasattr(decoder_output, 'logits'):
             logits = decoder_output.logits
@@ -453,7 +551,6 @@ class NMR2MolGenerator(pl.LightningModule):
         )
         preds = torch.argmax(log_probs, dim=-1)
         return sloss, preds
-    
     
     def _postprocess_smiles(self, decoded_str):
         if not isinstance(decoded_str, str):
