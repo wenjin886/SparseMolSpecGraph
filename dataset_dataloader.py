@@ -239,6 +239,7 @@ def generate_masked_node_dataset(unmasked_dataset_path, save_name):
     torch.save(masked_dataset, os.path.join(os.path.dirname(unmasked_dataset_path), save_name))
 
 def generate_formula_dataset(dataset_path, save_name):
+    print(f"Loading dataset... ({dataset_path})")
     dataset = torch.load(dataset_path)
     formula_dataset = []
     for data_i in tqdm(dataset, total=len(dataset)):
@@ -296,12 +297,13 @@ if __name__ == "__main__":
     # dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/h_nmr_label_mapped.pt"
     # generate_masked_node_dataset(dataset_path, "masked_h_nmr_label_mapped.pt")
 
-    # dataset_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/example_hnmr.pt"
-    # generate_formula_dataset(dataset_path, "example_hnmr_with_formula.pt")
+    # dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/h_nmr.pt"
+    dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/h_nmr_label_mapped.pt"
+    generate_formula_dataset(dataset_path, "hnmr_labelmapped_with_formula.pt")
     
-    smiles_tokenizer_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/smiles_tokenizer_fast/tokenizer.json"
-    formula_tokenizer_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/formula_tokenizer_fast/tokenizer.json"
-    dataset_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/example_hnmr_with_formula.pt"
-    generate_smiles_ids_and_formula_ids_dataset(dataset_path, smiles_tokenizer_path, formula_tokenizer_path, "hnmr_with_smiles_and_formula_ids.pt")
+    # smiles_tokenizer_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/smiles_tokenizer_fast/tokenizer.json"
+    # formula_tokenizer_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/formula_tokenizer_fast/tokenizer.json"
+    # dataset_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/example_hnmr_with_formula.pt"
+    # generate_smiles_ids_and_formula_ids_dataset(dataset_path, smiles_tokenizer_path, formula_tokenizer_path, "hnmr_with_smiles_and_formula_ids.pt")
     
 
