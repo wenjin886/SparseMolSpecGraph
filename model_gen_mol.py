@@ -15,24 +15,24 @@ import rdkit.Chem as Chem
 
 from model import PeakGraphModule
 
-def pad_smiles_ids(smiles_ids_list, smiles_len, pad_token=0):
+def pad_str_ids(str_ids_list, str_len, pad_token=0):
     """
-    将一个list中的smiles_ids补齐成tensor batch，同时返回padding mask
+    将一个list中的str_ids补齐成tensor batch，同时返回padding mask
     """
-    max_length = max(smiles_len)
+    max_length = max(str_len)
     
-    padded_smiles_ids = []
+    padded_str_ids = []
     padding_masks = []
-    for ids in smiles_ids_list:
+    for ids in str_ids_list:
         pad_len = max_length - len(ids)
         padded_ids = ids + [pad_token] * pad_len
-        padded_smiles_ids.append(padded_ids)
+        padded_str_ids.append(padded_ids)
         
         # 创建padding mask: 1表示真实token，0表示padding token
         mask = [1] * len(ids) + [0] * pad_len
         padding_masks.append(mask)
 
-    return torch.tensor(padded_smiles_ids, dtype=torch.long), torch.tensor(padding_masks, dtype=torch.bool)
+    return torch.tensor(padded_str_ids, dtype=torch.long), torch.tensor(padding_masks, dtype=torch.bool)
 
 class Embeddings(nn.Module):
     def __init__(self, d_model, vocab):
@@ -294,7 +294,11 @@ class NMRFormulaEncoder(nn.Module):
     def forward(self, spec_hidden_states, spec_attention_mask, formula_ids, formula_att_mask):
         formula_embed = self.formula_embed(formula_ids)
         src = torch.cat([spec_hidden_states, formula_embed], dim=1) # (batch_size N_spec + N_formula, d_model)
+
+        if len(formula_att_mask.shape) == 2:
+            formula_att_mask = formula_att_mask.unsqueeze(1)
         src_mask = torch.cat([spec_attention_mask, formula_att_mask], dim=-1) # (batch_size, 1, N_spec + N_formula)
+
         src_embed = self.spec_formula_encoder(src, src_mask)
 
         return src_embed, src_mask
@@ -477,7 +481,7 @@ class NMR2MolGenerator(pl.LightningModule):
                                 num_layers=num_layers, num_heads=num_heads, dropout=dropout)
 
         spec_embed_dim = self.graph_encoder.in_node_dim
-        self.spec_embed_proj = nn.Linear(spec_embed_dim, d_model)
+        # self.spec_embed_proj = nn.Linear(spec_embed_dim, d_model)
         
         self.use_formula = use_formula
         if self.use_formula:
@@ -488,10 +492,11 @@ class NMR2MolGenerator(pl.LightningModule):
                                                      dropout=dropout)
             
         self.smiles_decoder = NMR2MolEncoderDecoder(smiles_vocab_size,
-                                             d_model=d_model, d_ff=d_ff, 
-                                             decoder_head=decoder_head, 
-                                             N_decoder_layer=N_decoder_layer, 
-                                             dropout=dropout)
+                                                    formula_vocab_size,
+                                                    d_model=d_model, d_ff=d_ff, 
+                                                    decoder_head=decoder_head, 
+                                                    N_decoder_layer=N_decoder_layer, 
+                                                    dropout=dropout)
         
         self.d_model = d_model
         self.warm_up_step = warm_up_step
@@ -513,7 +518,7 @@ class NMR2MolGenerator(pl.LightningModule):
         node_embeddings  = self.graph_encoder.encode(data)
         node_embeddings = node_embeddings.float()  # Ensure float dtype
         src_embed, src_mask = self._get_spec_embed(data.batch, node_embeddings) # spec_embed: (batch_size, max_nodes, in_node_dim)
-        src_embed = self.spec_embed_proj(src_embed) # (batch_size, max_nodes, d_model)
+        # src_embed = self.spec_embed_proj(src_embed) # (batch_size, max_nodes, d_model)
 
         if self.use_formula:
             src_embed, src_mask = self.spec_formula_encoder(src_embed, src_mask, padding_formula_ids, padding_formula_att_mask)
@@ -594,38 +599,51 @@ class NMR2MolGenerator(pl.LightningModule):
         # print(correct_pred/len(preds)) 
         return correct_pred/len(preds) if total > 0 else 0.0
     
+    def _step(self, batch, batch_idx):
+        device = batch.id.device
+
+        padding_smiles_ids, padding_smiles_masks = pad_str_ids(batch.smiles_ids, batch.smiles_len)
+        if self.use_formula:
+            padding_formula_ids, padding_formula_masks = pad_str_ids(batch.formula_ids, batch.formula_len)
+            padding_formula_ids, padding_formula_masks = padding_formula_ids.to(device), padding_formula_masks.to(device)
+        else:
+            padding_formula_ids, padding_formula_masks = None, None
+        logits = self(batch, 
+                      padding_smiles_ids.to(device), 
+                      padding_smiles_masks.to(device),
+                      padding_formula_ids,
+                      padding_formula_masks
+                    )
+        return logits
+
     def training_step(self, batch, batch_idx):
-        
-        batch_size = len(batch.id)
-        padding_smiles_ids, padding_smiles_masks = pad_smiles_ids(batch.smiles_ids, batch.smiles_len)
-        logits = self(batch, padding_smiles_ids.to(batch.id.device), padding_smiles_masks.to(batch.id.device))
+        logits = self._step(batch, batch_idx)
 
         smiles_pred_loss, _ = self._cal_loss(logits, self.smiles_decoder.tgt_y, norm=self.smiles_decoder.ntokens)
 
+        batch_size = len(batch.id)
         self.log("train_loss", smiles_pred_loss, batch_size=batch_size)
         return smiles_pred_loss
     
     def validation_step(self, batch, batch_idx):
-        batch_size = len(batch.id)
-        padding_smiles_ids, padding_smiles_masks = pad_smiles_ids(batch.smiles_ids, batch.smiles_len)
-        logits = self(batch, padding_smiles_ids.to(batch.id.device), padding_smiles_masks.to(batch.id.device))
+        logits = self._step(batch, batch_idx)
 
         smiles_pred_loss, preds = self._cal_loss(logits, self.smiles_decoder.tgt_y, norm=self.smiles_decoder.ntokens)
         acc = self._cal_mol_acc(preds, self.smiles_decoder.tgt_y)
 
+        batch_size = len(batch.id)
         # 提取目标：batch.masked_node_target 是 dict of tensors
         self.log("val_loss", smiles_pred_loss, batch_size=batch_size)
         self.log("val_acc", acc, batch_size=batch_size)
         return smiles_pred_loss
     
     def test_step(self, batch, batch_idx):
-        batch_size = len(batch.id)
-        padding_smiles_ids, padding_smiles_masks = pad_smiles_ids(batch.smiles_ids, batch.smiles_len)
-        logits = self(batch, padding_smiles_ids.to(batch.id.device), padding_smiles_masks.to(batch.id.device))
+        logits = self._step(batch, batch_idx)
 
         smiles_pred_loss, preds = self._cal_loss(logits, self.smiles_decoder.tgt_y, norm=self.smiles_decoder.ntokens)
         acc = self._cal_mol_acc(preds, self.smiles_decoder.tgt_y)
 
+        batch_size = len(batch.id)
         # 提取目标：batch.masked_node_target 是 dict of tensors
         self.log("test_loss", smiles_pred_loss, batch_size=batch_size)
         self.log("test_acc", acc, batch_size=batch_size)

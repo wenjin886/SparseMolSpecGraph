@@ -23,7 +23,6 @@ import torch
 
 def split_smiles(smile: str) :
     pattern_full = r"(\[[^\]]+]|Br?|Cl?|N|O|S|P|F|I|b|c|n|o|s|p|\(|\)|\.|.|=|#|-|\+|\\\\|\/|:|~|@|\?|>|\*|\$|\%[0-9]{2}|[0-9])"
-
     regex = re.compile(pattern_full)
     tokens = [token for token in regex.findall(smile)]
 

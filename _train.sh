@@ -46,14 +46,57 @@ echo "Training..."
 #     # --splitted_set_save_dir_name train_val_test_set_with_smiles_ids \
 #     # --dataset_path ../Dataset/h_nmr/h_nmr_label_mapped_with_smiles_ids.pt \
 
+# python train_gen_mol.py \
+#     --exp_name hnmr_graph2smi_d512_lr2 \
+#     --exp_save_path ../exp/exp_hnmr \
+#     --dataset_path ../Dataset/h_nmr/train_val_test_set_with_smiles_ids \
+#     --smiles_tokenizer_path ../Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json \
+#     --wandb_project NMR-Graph \
+#     --spec_type h_nmr \
+#     --label_type mapped \
+#     --max_epochs 100 \
+#     --batch_size 512 \
+#     --lr 2 \
+#     --num_heads 8 \
+#     --mult_embed_dim 256 \
+#     --nH_embed_dim 128 \
+#     --c_w_embed_dim 64 \
+#     --d_model 512 \
+#     --d_ff 2048 \
+
+# python train_gen_mol.py \
+#     --exp_name hnmr_graph2smi_d512_mapped_formula_noproj \
+#     --exp_save_path ../exp/exp_hnmr \
+#     --dataset_path ../Dataset/h_nmr/hnmr_labelmapped_with_smiles_and_formula_ids.pt \
+#     --splitted_set_save_dir_name train_val_test_set_mapped_formula_smi_ids \
+#     --smiles_tokenizer_path ../Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json \
+#     --wandb_project NMR-Graph \
+#     --spec_type h_nmr \
+#     --label_type mapped \
+#     --max_epochs 100 \
+#     --batch_size 512 \
+#     --lr 2 \
+#     --num_heads 8 \
+#     --mult_embed_dim 256 \
+#     --nH_embed_dim 128 \
+#     --c_w_embed_dim 64 \
+#     --d_model 512 \
+#     --d_ff 2048 \
+#     --use_formula \
+#     --spec_formula_encoder_head 8 \
+#     --spec_formula_encoder_layer 4 \
+#     # --code_test \
+#     # --dataset_path ../Dataset/h_nmr/train_val_test_set_mapped_formula_smi_ids \
+
 python train_gen_mol.py \
     --exp_name hnmr_graph2smi_d512_lr2_ws0 \
     --exp_save_path ../exp/exp_hnmr \
-    --dataset_path ../Dataset/h_nmr/train_val_test_set_with_smiles_ids \
+    --dataset_path ../Dataset/h_nmr/train_val_test_set_nomap_f_s_ids \
     --smiles_tokenizer_path ../Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json \
     --wandb_project NMR-Graph \
     --spec_type h_nmr \
-    --label_type mapped \
+    --label_type origin \
+    --dataset_info_path ../Dataset/h_nmr/h_nmr.json \
     --max_epochs 100 \
     --batch_size 512 \
     --lr 2 \
@@ -63,4 +106,12 @@ python train_gen_mol.py \
     --c_w_embed_dim 64 \
     --d_model 512 \
     --d_ff 2048 \
+    --use_formula \
+    --spec_formula_encoder_head 8 \
+    --spec_formula_encoder_layer 4 \
+    # --code_test \
+    # --dataset_path ../Dataset/h_nmr/hnmr_with_smiles_and_formula_ids.pt \
+    # --splitted_set_save_dir_name train_val_test_set_nomap_f_s_ids \
+
+
 
