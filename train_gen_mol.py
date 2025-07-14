@@ -104,7 +104,7 @@ def main(args):
                     dropout=args.dropout, 
                     # training
                     warm_up_step=args.warm_up_step, lr=args.lr)
-        print(model)
+        # print(model)
     
     exp_name = get_formatted_exp_name(args.exp_name)
     save_dirpath = osp.join(args.exp_save_path, exp_name)
@@ -120,6 +120,7 @@ def main(args):
                     name=exp_name,
                     save_dir=args.exp_save_path
                 )
+        wandb_logger.experiment.config.update({"model_arch": str(model)})
         fast_dev_run = False
        
 

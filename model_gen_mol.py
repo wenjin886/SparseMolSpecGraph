@@ -662,9 +662,11 @@ class NMR2MolGenerator(pl.LightningModule):
            
             if step == 0:
                 step = 1
-            lr_scale = 1 * (
-                self.d_model ** (-0.5) * min(step ** (-0.5), step * self.warm_up_step ** (-1.5))
-            )
+            if self.warm_up_step > 0:
+                value = self.d_model ** (-0.5) * min(step ** (-0.5), step * self.warm_up_step ** (-1.5))
+            else:
+                value = self.d_model ** (-0.5) * step ** (-0.5)
+            lr_scale = 1 * value
 
             return lr_scale
 
