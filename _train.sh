@@ -89,7 +89,7 @@ echo "Training..."
 #     # --dataset_path ../Dataset/h_nmr/train_val_test_set_mapped_formula_smi_ids \
 
 python train_gen_mol.py \
-    --exp_name hnmr_graph2smi_d512_lr2_ws0 \
+    --exp_name hnmr_graph2smi_d512_lr2_graphdropout0 \
     --exp_save_path ../exp/exp_hnmr \
     --dataset_path ../Dataset/h_nmr/train_val_test_set_nomap_f_s_ids \
     --smiles_tokenizer_path ../Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json \
@@ -97,14 +97,16 @@ python train_gen_mol.py \
     --spec_type h_nmr \
     --label_type origin \
     --dataset_info_path ../Dataset/h_nmr/h_nmr.json \
-    --max_epochs 100 \
+    --max_epochs 400 \
     --batch_size 512 \
     --lr 2 \
-    --warm_up_step 0 \
+    --warm_up_step 3000 \
     --num_heads 8 \
+    --numnum_layers 4 \
     --mult_embed_dim 256 \
     --nH_embed_dim 128 \
     --c_w_embed_dim 64 \
+    --graph_dropout 0 \
     --d_model 512 \
     --d_ff 2048 \
     --use_formula \
