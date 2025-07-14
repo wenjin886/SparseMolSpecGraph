@@ -253,7 +253,7 @@ def generate_smiles_ids_and_formula_ids_dataset(unmasked_dataset_path,
                                                 smiles_tokenizer_path, 
                                                 formula_tokenizer_path, 
                                                 save_name=None, save=True):
-    print(f"Loading dataset... ({dataset_path})")
+    print(f"Loading dataset... ({unmasked_dataset_path})")
     unmaksed_dataset = torch.load(unmasked_dataset_path)
     smiles_tokenizer = PreTrainedTokenizerFast(tokenizer_file=smiles_tokenizer_path,
                                         bos_token="[BOS]",
@@ -313,8 +313,9 @@ if __name__ == "__main__":
     
     smiles_tokenizer_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json"
     formula_tokenizer_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/formula_tokenizer_fast/tokenizer.json"
-    dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/hnmr_labelmapped_with_formula.pt"
-    # dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/hnmr_with_formula.pt"
-    generate_smiles_ids_and_formula_ids_dataset(dataset_path, smiles_tokenizer_path, formula_tokenizer_path, "hnmr_labelmapped_with_smiles_and_formula_ids.pt")
+    # dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/hnmr_labelmapped_with_formula.pt"
+    dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/hnmr_with_formula.pt"
+    # generate_smiles_ids_and_formula_ids_dataset(dataset_path, smiles_tokenizer_path, formula_tokenizer_path, "hnmr_labelmapped_with_smiles_and_formula_ids.pt")
+    generate_smiles_ids_and_formula_ids_dataset(dataset_path, smiles_tokenizer_path, formula_tokenizer_path, "hnmr_with_smiles_and_formula_ids.pt")
     
 
