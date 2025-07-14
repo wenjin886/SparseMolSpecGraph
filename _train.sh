@@ -100,6 +100,7 @@ python train_gen_mol.py \
     --max_epochs 100 \
     --batch_size 512 \
     --lr 2 \
+    --warm_up_step 0 \
     --num_heads 8 \
     --mult_embed_dim 256 \
     --nH_embed_dim 128 \
