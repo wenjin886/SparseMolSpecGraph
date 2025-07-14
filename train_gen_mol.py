@@ -92,6 +92,7 @@ def main(args):
                     nH_embed_dim=args.nH_embed_dim, 
                     c_w_embed_dim=args.c_w_embed_dim,
                     num_layers=args.num_layers, num_heads=args.num_heads,
+                    graph_dropout=args.graph_dropout,
                     mult_class_weights=None,
                     # formula and spec_formula_encoder
                     use_formula=args.use_formula,
@@ -276,6 +277,7 @@ if __name__ == "__main__":
     parser.add_argument('--c_w_embed_dim', type=int, default=64)
     parser.add_argument('--num_layers', type=int, default=4)
     parser.add_argument('--num_heads', type=int, default=4)
+    parser.add_argument('--graph_dropout', type=float, default=0.1)
     # formula and spec_formula_encoder
     parser.add_argument('--use_formula', action='store_true')
     parser.add_argument('--formula_vocab_size', type=int, default=77)
