@@ -17,7 +17,7 @@ from datetime import datetime
 import random
 from tqdm import tqdm
 
-from model_gen_mol import NMR2MolGenerator, pad_smiles_ids
+from model_gen_mol import NMR2MolGenerator, pad_str_ids
 
 def get_formatted_exp_name(exp_name, resume=False):
     formatted_time = datetime.now().strftime("%H-%M-%d-%m-%Y")
@@ -109,7 +109,6 @@ def main(args):
     print(f"Will save training results in {save_dirpath}")
 
     
-    
     if args.code_test:
         wandb_logger = None
         fast_dev_run = 2
@@ -120,8 +119,7 @@ def main(args):
                     save_dir=args.exp_save_path
                 )
         fast_dev_run = False
-        
-        
+       
 
     if device == torch.device("cuda"):
         device_num = torch.cuda.device_count()
@@ -176,8 +174,6 @@ def main(args):
             train_set = torch.load(osp.join(args.dataset_path, "train_set.pt"))
             val_set = torch.load(osp.join(args.dataset_path, "val_set.pt"))
             test_set = torch.load(osp.join(args.dataset_path, "test_set.pt"))
-
-    
 
     train_dataloader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
     val_dataloader = DataLoader(val_set, batch_size=args.batch_size, shuffle=True)
@@ -241,7 +237,7 @@ def generate_smiles(model, dataset):
     
     for batch in smiles_dataloader:
         
-        padding_smiles_ids, padding_smiles_masks = pad_smiles_ids(batch.smiles_ids, batch.smiles_len) # shape: (batch_size, max_length)
+        padding_smiles_ids, padding_smiles_masks = pad_str_ids(batch.smiles_ids, batch.smiles_len) # shape: (batch_size, max_length)
         logits = model(batch, padding_smiles_ids, padding_smiles_masks)
         
         pred = predict_step(batch, model)
@@ -266,11 +262,18 @@ if __name__ == "__main__":
     parser.add_argument('--decoder_head', type=int, default=8)
     parser.add_argument('--N_decoder_layer', type=int, default=4)
     parser.add_argument('--dropout', type=float, default=0.1)
-    parser.add_argument('--num_layers', type=int, default=4)
-    parser.add_argument('--num_heads', type=int, default=4)
+    
+    # graph encoder
     parser.add_argument('--mult_embed_dim', type=int, default=128)
     parser.add_argument('--nH_embed_dim', type=int, default=64)
     parser.add_argument('--c_w_embed_dim', type=int, default=64)
+    parser.add_argument('--num_layers', type=int, default=4)
+    parser.add_argument('--num_heads', type=int, default=4)
+    # formula and spec_formula_encoder
+    parser.add_argument('--use_formula', action='store_true')
+    parser.add_argument('--formula_vocab_size', type=int, default=77)
+    parser.add_argument('--spec_formula_encoder_head', type=int, default=8)
+    parser.add_argument('--spec_formula_encoder_layer', type=int, default=4)
 
     parser.add_argument('--code_test', action='store_true')
     parser.add_argument('--warm_up_step', type=int, default=3000)
