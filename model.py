@@ -89,8 +89,9 @@ class NodeFeatureEmbedding(nn.Module):
 
 class NMRGraphEncoder(nn.Module):
     def __init__(self, in_node_dim, hidden_node_dim, 
-                #  graph_dim,
-                 num_layers, num_heads, edge_dim=1):
+                 num_layers, num_heads, 
+                 edge_dim=1,
+                 dropout=0.1):
         super().__init__()
         self.in_node_dim = in_node_dim
         self.hidden_node_dim = hidden_node_dim
@@ -98,7 +99,7 @@ class NMRGraphEncoder(nn.Module):
         
         # self.edge_embed = nn.Linear(1, 1) # norm
         self.conv_layers = clones(TransformerConv(in_node_dim, hidden_node_dim, heads=num_heads, edge_dim=edge_dim), num_layers)
-        self.sublayers = clones(SublayerConnection(size=in_node_dim, dropout=0.1), num_layers)
+        self.sublayers = clones(SublayerConnection(size=in_node_dim, dropout=dropout), num_layers)
         
         self.linear = nn.Linear(in_node_dim, in_node_dim)
         
@@ -151,6 +152,7 @@ class PeakGraphModule(pl.LightningModule):
     def __init__(self, mult_class_num, nH_class_num, 
                  mult_embed_dim=16, nH_embed_dim=8, c_w_embed_dim=8,
                  num_layers=4, num_heads=4,
+                 dropout=0.1,
                  mult_class_weights=None,
                  warm_up_step=None, lr=None):
         """
@@ -173,7 +175,7 @@ class PeakGraphModule(pl.LightningModule):
         print('in_node_dim of node feature encoder', in_node_dim)
         assert in_node_dim % num_heads == 0, "in_node_dim must be divisible by num_heads"
         hidden_node_dim = in_node_dim // num_heads
-        self.encoder = NMRGraphEncoder(in_node_dim, hidden_node_dim, num_layers, num_heads)
+        self.encoder = NMRGraphEncoder(in_node_dim, hidden_node_dim, num_layers, num_heads, dropout=dropout)
         self.predictor = MultiTaskNodePredictor(in_node_dim, mult_class_num, nH_class_num,
                                                 mult_embed_dim, nH_embed_dim, c_w_embed_dim, c_w_embed_dim)
         self.in_node_dim = in_node_dim
@@ -181,20 +183,12 @@ class PeakGraphModule(pl.LightningModule):
         self.warm_up_step = warm_up_step
         self.lr = lr
         self.mult_class_weights = mult_class_weights
-        # self.__init_weights__()
+       
 
         self.mult_auroc = MulticlassAUROC(mult_class_num, average="macro")
         self.nH_auroc = MulticlassAUROC(nH_class_num, average="macro")
     
-    # def __init_weights__(self):
-    #     print("Init weights...")
-    #     for m in self.modules():
-    #         if isinstance(m, nn.Linear):
-    #             nn.init.xavier_normal_(m.weight)
-    #             if m.bias is not None:
-    #                 nn.init.constant_(m.bias, 0)
-    #         elif isinstance(m, nn.Embedding):
-    #             nn.init.xavier_normal_(m.weight)
+    
 
     
     def encode(self, data):

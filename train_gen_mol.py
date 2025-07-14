@@ -62,6 +62,8 @@ def split_dataset(dataset_path, seed, save_dir_name):
 def main(args):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
     torch.set_float32_matmul_precision(args.precision)
+    torch.manual_seed(args.seed)
+    random.seed(args.seed)
 
     if args.spec_type == "h_nmr":
         if args.label_type == "origin":
@@ -137,13 +139,17 @@ def main(args):
                                           monitor=args.loss_monitor,
                                           save_last=True)
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    early_stop_callback = EarlyStopping(
-            monitor='val_loss',      # 监控指标，例如验证集损失
-            patience=5,             # 如果10个epoch内指标未改善则停止训练
-            mode='min',              # 监控指标越小越好（如损失函数）
-            verbose=True             # 是否打印信息
-        )
-    callbacks = [checkpoint_callback, lr_monitor, early_stop_callback]
+    if args.early_stop != -1:
+        early_stop_callback = EarlyStopping(
+                monitor='val_loss',      # 监控指标，例如验证集损失
+                patience=args.early_stop,             # 如果n个epoch内指标未改善则停止训练
+                mode='min',              # 监控指标越小越好（如损失函数）
+                verbose=True             # 是否打印信息
+            )
+        callbacks = [checkpoint_callback, lr_monitor, early_stop_callback]
+    else:
+        callbacks = [checkpoint_callback, lr_monitor]
+    
 
     trainer = pl.Trainer(
         accelerator=accelerator,
@@ -275,6 +281,7 @@ if __name__ == "__main__":
     parser.add_argument('--code_test', action='store_true')
     parser.add_argument('--warm_up_step', type=int, default=3000)
     parser.add_argument('--lr', type=float, default=1)
+    parser.add_argument('--early_stop', type=int, default=-1)
     parser.add_argument('--max_epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--save_top_k', type=int, default=3)

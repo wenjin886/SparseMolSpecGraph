@@ -474,7 +474,7 @@ class NMR2MolGenerator(pl.LightningModule):
 
         self.graph_encoder = PeakGraphModule(mult_class_num=mult_class_num, nH_class_num=nH_class_num, 
                                 mult_embed_dim=mult_embed_dim, nH_embed_dim=nH_embed_dim, c_w_embed_dim=c_w_embed_dim,
-                                num_layers=num_layers, num_heads=num_heads)
+                                num_layers=num_layers, num_heads=num_heads, dropout=dropout)
 
         spec_embed_dim = self.graph_encoder.in_node_dim
         self.spec_embed_proj = nn.Linear(spec_embed_dim, d_model)

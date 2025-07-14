@@ -47,7 +47,7 @@ echo "Training..."
 #     # --dataset_path ../Dataset/h_nmr/h_nmr_label_mapped_with_smiles_ids.pt \
 
 python train_gen_mol.py \
-    --exp_name hnmr_graph2smi_d512_lr2 \
+    --exp_name hnmr_graph2smi_d512_lr2_ws0 \
     --exp_save_path ../exp/exp_hnmr \
     --dataset_path ../Dataset/h_nmr/train_val_test_set_with_smiles_ids \
     --smiles_tokenizer_path ../Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json \
