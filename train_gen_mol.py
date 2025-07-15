@@ -65,51 +65,55 @@ def main(args):
     torch.manual_seed(args.seed)
     random.seed(args.seed)
 
-    if args.spec_type == "h_nmr":
-        if args.label_type == "origin":
-            with open(args.dataset_info_path, "r") as f:
-                dataset_info = json.load(f)
-            MULTIPLETS = dataset_info["MULTIPLETS"]
-            NUM_H = dataset_info["NUM_H"]
+    if args.resume:
+        exp_name = get_formatted_exp_name(args.exp_name, resume=True)
+        model = NMR2MolGenerator.load_from_checkpoint(args.checkpoint_path)
+    else:
+        exp_name = get_formatted_exp_name(args.exp_name)
+        if args.spec_type == "h_nmr":
+            if args.label_type == "origin":
+                with open(args.dataset_info_path, "r") as f:
+                    dataset_info = json.load(f)
+                MULTIPLETS = dataset_info["MULTIPLETS"]
+                NUM_H = dataset_info["NUM_H"]
+                
+            elif args.label_type == "mapped":
+                mult_map_info_path = "../Dataset/h_nmr/multiplet_mapping.json"
+                nh_map_info_path = "../Dataset/h_nmr/nh_mapping.json"
+                with open(mult_map_info_path, "r") as f:
+                    mult_map_info = json.load(f)
+                    MULTIPLETS = mult_map_info['multiplet_label_to_id']
+                with open(nh_map_info_path, "r") as f:
+                    nh_map_info = json.load(f)
+                    NUM_H = nh_map_info['nh_label_to_id']
             
-        elif args.label_type == "mapped":
-            mult_map_info_path = "../Dataset/h_nmr/multiplet_mapping.json"
-            nh_map_info_path = "../Dataset/h_nmr/nh_mapping.json"
-            with open(mult_map_info_path, "r") as f:
-                mult_map_info = json.load(f)
-                MULTIPLETS = mult_map_info['multiplet_label_to_id']
-            with open(nh_map_info_path, "r") as f:
-                nh_map_info = json.load(f)
-                NUM_H = nh_map_info['nh_label_to_id']
-        
-        print(f"lable num | MULTIPLETS: {len(MULTIPLETS)} | NUM_H: {len(NUM_H)}")
+            print(f"lable num | MULTIPLETS: {len(MULTIPLETS)} | NUM_H: {len(NUM_H)}")
 
-        model = NMR2MolGenerator(
-                    mult_class_num=len(MULTIPLETS), 
-                    nH_class_num=len(NUM_H), 
-                    smiles_tokenizer_path=args.smiles_tokenizer_path,
-                    mult_embed_dim=args.mult_embed_dim, 
-                    nH_embed_dim=args.nH_embed_dim, 
-                    c_w_embed_dim=args.c_w_embed_dim,
-                    num_layers=args.num_layers, num_heads=args.num_heads,
-                    graph_dropout=args.graph_dropout,
-                    mult_class_weights=None,
-                    # formula and spec_formula_encoder
-                    use_formula=args.use_formula,
-                    formula_vocab_size=args.formula_vocab_size,
-                    spec_formula_encoder_head=args.spec_formula_encoder_head,
-                    spec_formula_encoder_layer=args.spec_formula_encoder_layer,
-                    # decoder
-                    d_model=args.d_model, d_ff=args.d_ff, 
-                    decoder_head=args.decoder_head, N_decoder_layer=args.N_decoder_layer, 
-                    dropout=args.dropout, 
-                    # training
-                    warm_up_step=args.warm_up_step, lr=args.lr)
+            model = NMR2MolGenerator(
+                        mult_class_num=len(MULTIPLETS), 
+                        nH_class_num=len(NUM_H), 
+                        smiles_tokenizer_path=args.smiles_tokenizer_path,
+                        mult_embed_dim=args.mult_embed_dim, 
+                        nH_embed_dim=args.nH_embed_dim, 
+                        c_w_embed_dim=args.c_w_embed_dim,
+                        num_layers=args.num_layers, num_heads=args.num_heads,
+                        graph_dropout=args.graph_dropout,
+                        mult_class_weights=None,
+                        # formula and spec_formula_encoder
+                        use_formula=args.use_formula,
+                        formula_vocab_size=args.formula_vocab_size,
+                        spec_formula_encoder_head=args.spec_formula_encoder_head,
+                        spec_formula_encoder_layer=args.spec_formula_encoder_layer,
+                        # decoder
+                        d_model=args.d_model, d_ff=args.d_ff, 
+                        decoder_head=args.decoder_head, N_decoder_layer=args.N_decoder_layer, 
+                        dropout=args.dropout, 
+                        # training
+                        warm_up_step=args.warm_up_step, lr=args.lr)
         # print(model)
-    
-    exp_name = get_formatted_exp_name(args.exp_name)
     save_dirpath = osp.join(args.exp_save_path, exp_name)
     print(f"Will save training results in {save_dirpath}")
+    
 
     
     if args.code_test:
@@ -259,6 +263,8 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument('--exp_name', type=str, required=True)
     parser.add_argument('--exp_save_path', type=str, default='../exp')
+    parser.add_argument('--resume', action='store_true')
+    parser.add_argument('--checkpoint_path', type=str, default=None)
     parser.add_argument('--dataset_path', type=str, required=True)
     parser.add_argument('--splitted_set_save_dir_name', type=str, default="train_val_test_set")
     parser.add_argument('--dataset_info_path', type=str)
