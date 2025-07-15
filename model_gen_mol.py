@@ -452,6 +452,7 @@ class NMR2MolGenerator(pl.LightningModule):
                  smiles_tokenizer_path,
                  # NMR graph encoder
                  mult_embed_dim=16, nH_embed_dim=8, c_w_embed_dim=8,
+                 edge_dim=1,
                  num_layers=4, num_heads=4, graph_dropout=0.1,
                  mult_class_weights=None,
                  # formula
@@ -478,7 +479,7 @@ class NMR2MolGenerator(pl.LightningModule):
 
         self.graph_encoder = PeakGraphModule(mult_class_num=mult_class_num, nH_class_num=nH_class_num, 
                                 mult_embed_dim=mult_embed_dim, nH_embed_dim=nH_embed_dim, c_w_embed_dim=c_w_embed_dim,
-                                num_layers=num_layers, num_heads=num_heads, dropout=graph_dropout)
+                                num_layers=num_layers, num_heads=num_heads, edge_dim=edge_dim, dropout=graph_dropout)
 
         spec_embed_dim = self.graph_encoder.in_node_dim
         # self.spec_embed_proj = nn.Linear(spec_embed_dim, d_model)

@@ -96,6 +96,7 @@ def main(args):
                         mult_embed_dim=args.mult_embed_dim, 
                         nH_embed_dim=args.nH_embed_dim, 
                         c_w_embed_dim=args.c_w_embed_dim,
+                        edge_dim=args.edge_dim,
                         num_layers=args.num_layers, num_heads=args.num_heads,
                         graph_dropout=args.graph_dropout,
                         mult_class_weights=None,
@@ -284,6 +285,7 @@ if __name__ == "__main__":
     parser.add_argument('--mult_embed_dim', type=int, default=128)
     parser.add_argument('--nH_embed_dim', type=int, default=64)
     parser.add_argument('--c_w_embed_dim', type=int, default=64)
+    parser.add_argument('--edge_dim', type=int, default=1)
     parser.add_argument('--num_layers', type=int, default=4)
     parser.add_argument('--num_heads', type=int, default=4)
     parser.add_argument('--graph_dropout', type=float, default=0.1)
