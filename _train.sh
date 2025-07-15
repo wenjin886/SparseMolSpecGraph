@@ -102,7 +102,7 @@ python train_gen_mol.py \
     --lr 2 \
     --warm_up_step 3000 \
     --num_heads 8 \
-    --numnum_layers 4 \
+    --num_layers 4 \
     --mult_embed_dim 256 \
     --nH_embed_dim 128 \
     --c_w_embed_dim 64 \

@@ -115,6 +115,7 @@ def main(args):
     if args.code_test:
         wandb_logger = None
         fast_dev_run = 2
+        print(model)
     else:
         wandb_logger = WandbLogger(
                     project=args.wandb_project,
