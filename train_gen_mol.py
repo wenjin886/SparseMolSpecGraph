@@ -192,7 +192,9 @@ def main(args):
     val_dataloader = DataLoader(val_set, batch_size=args.batch_size, shuffle=True)
     test_dataloader = DataLoader(test_set, batch_size=args.batch_size, shuffle=True)
 
-    trainer.fit(model, train_dataloader, val_dataloader)
+    trainer.fit(model, train_dataloader, val_dataloader,
+                ckpt_path=args.checkpoint_path if args.resume else None
+            )
     
     # 在code_test模式下直接测试，不使用checkpoint
     if args.code_test:

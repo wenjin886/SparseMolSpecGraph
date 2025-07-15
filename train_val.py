@@ -1,6 +1,6 @@
 import os
 os.environ.pop("SLURM_NTASKS", None)
-os.environ["WANDB_DIR"] = "./exp"
+os.environ["WANDB_DIR"] = "../exp"
 import os.path as osp
 
 import torch
@@ -177,9 +177,9 @@ def main(args):
 
     
 
-    train_dataloader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
-    val_dataloader = DataLoader(val_set, batch_size=args.batch_size, shuffle=True)
-    test_dataloader = DataLoader(test_set, batch_size=args.batch_size, shuffle=True)
+    train_dataloader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True,num_workers=17)
+    val_dataloader = DataLoader(val_set, batch_size=args.batch_size, shuffle=True,num_workers=17)
+    test_dataloader = DataLoader(test_set, batch_size=args.batch_size, shuffle=True,num_workers=17)
 
     trainer.fit(model, train_dataloader, val_dataloader)
     
