@@ -156,8 +156,33 @@ echo "Training..."
 #     --spec_formula_encoder_head 8 \
 #     --spec_formula_encoder_layer 4 \
 
+# python train_gen_mol.py \
+#     --exp_name hnmr_graph2smi_d512_lr2_nomap_convdropout_edgesilu16 \
+#     --exp_save_path ../exp/exp_hnmr \
+#     --dataset_path ../Dataset/h_nmr/train_val_test_set_nomap_f_s_ids \
+#     --smiles_tokenizer_path ../Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json \
+#     --wandb_project NMR-Graph \
+#     --spec_type h_nmr \
+#     --label_type origin \
+#     --dataset_info_path ../Dataset/h_nmr/h_nmr.json \
+#     --max_epochs 500 \
+#     --batch_size 512 \
+#     --lr 2 \
+#     --warm_up_step 3000 \
+#     --num_heads 8 \
+#     --num_layers 4 \
+#     --mult_embed_dim 256 \
+#     --nH_embed_dim 128 \
+#     --c_w_embed_dim 64 \
+#     --edge_dim 16 \
+#     --d_model 512 \
+#     --d_ff 2048 \
+#     --use_formula \
+#     --spec_formula_encoder_head 8 \
+#     --spec_formula_encoder_layer 4 \
+
 python train_gen_mol.py \
-    --exp_name hnmr_graph2smi_d512_lr2_nomap_convdropout_edgesilu16 \
+    --exp_name hnmr_graph2smi_d512_lr2_nomap_convdropout_edgesilu16_nodenorm \
     --exp_save_path ../exp/exp_hnmr \
     --dataset_path ../Dataset/h_nmr/train_val_test_set_nomap_f_s_ids \
     --smiles_tokenizer_path ../Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json \

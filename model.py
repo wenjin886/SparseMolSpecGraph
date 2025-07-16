@@ -71,8 +71,9 @@ class NodeFeatureEmbedding(nn.Module):
         self.width_embed = c(continuous_value_embed)
         node_feature_dim = mult_embed_dim + nH_embed_dim + c_w_embed_dim*2
         self.proj = nn.Sequential(nn.Linear(node_feature_dim, node_feature_dim), 
-                                    nn.SiLU(),
-                                    nn.Dropout(p=dropout))
+                                    nn.SiLU())
+        self.norm = LayerNorm(node_feature_dim)
+                                    # nn.Dropout(p=dropout))
 
 
        
@@ -87,7 +88,7 @@ class NodeFeatureEmbedding(nn.Module):
         cen_vec = self.centroid_embed(centroid.unsqueeze(-1))
         wid_vec = self.width_embed(width.unsqueeze(-1))
         x = torch.cat([cen_vec, wid_vec, nH_vec,  mult_vec], dim=-1)  # [N,all_feature_dim]
-        return self.proj(x)
+        return self.norm(self.proj(x))
       
 
 class NMRGraphEncoder(nn.Module):
