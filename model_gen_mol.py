@@ -515,7 +515,7 @@ class NMR2MolGenerator(pl.LightningModule):
         
         return spec_embed, spec_mask
     
-    def encoder(self, data, padding_formula_ids=None, padding_formula_att_mask=None):
+    def encode(self, data, padding_formula_ids=None, padding_formula_att_mask=None):
         node_embeddings  = self.graph_encoder.encode(data)
         node_embeddings = node_embeddings.float()  # Ensure float dtype
         src_embed, src_mask = self._get_spec_embed(data.batch, node_embeddings) # spec_embed: (batch_size, max_nodes, in_node_dim)
@@ -528,7 +528,7 @@ class NMR2MolGenerator(pl.LightningModule):
     
     def forward(self, data, padding_smiles_ids, padding_smiles_masks, padding_formula_ids=None, padding_formula_att_mask=None):
         
-        src_embed, src_mask = self.encoder(data, padding_formula_ids, padding_formula_att_mask)
+        src_embed, src_mask = self.encode(data, padding_formula_ids, padding_formula_att_mask)
 
         if padding_smiles_masks.dtype == torch.bool:
             padding_smiles_masks = padding_smiles_masks.float()

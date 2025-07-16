@@ -206,59 +206,7 @@ def main(args):
 
 
 
-def predict_step(batch, model):
-    node_embeddings  = model.graph_encoder.encode(batch)
-    src, src_mask = model._get_src(batch.batch, node_embeddings)
 
-    bos_token_id = model.smiles_tokenizer.convert_tokens_to_ids('[BOS]')
-    eos_token_id = model.smiles_tokenizer.convert_tokens_to_ids('[EOS]')
-
-    input_ids = torch.tensor([[bos_token_id]]).repeat(src.shape[0], 1).to(model.device)
-   
-
-    output_ids = model.smiles_decoder.generate(
-        input_ids=input_ids,
-        encoder_hidden_states=src,
-        encoder_attention_mask=src_mask,
-        num_beams=10,
-        max_length=100,
-        early_stopping=True,
-        bos_token_id=bos_token_id,
-        eos_token_id=eos_token_id,
-        pad_token_id=model.smiles_tokenizer.pad_token_id,
-        num_return_sequences=2  # 返回前5个最佳序列
-    )
-    predictions = model.smiles_tokenizer.batch_decode(output_ids, skip_special_tokens=True)
-    return model._postprocess_smiles(predictions)
-
-def generate_smiles(model, dataset):
-
-    dataset_info_path = "../Dataset/h_nmr.json"
-    with open(dataset_info_path, "r") as f:
-        dataset_info = json.load(f)
-        MULTIPLETS = dataset_info['MULTIPLETS']
-        NUM_H = dataset_info['NUM_H']
-
-
-    smiles_tokenizer_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/smiles_tokenizer_fast/tokenizer.json"
-    smiles_tokenizer = PreTrainedTokenizerFast(tokenizer_file=smiles_tokenizer_path,
-                                                            bos_token="[BOS]",
-                                                            eos_token="[EOS]",
-                                                            pad_token="[PAD]",
-                                                            unk_token="[UNK]",
-                                                            padding_side="right" )
-    # len(smiles_tokenizer.get_vocab())
-
-    smiles_dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
-    
-    for batch in smiles_dataloader:
-        
-        padding_smiles_ids, padding_smiles_masks = pad_str_ids(batch.smiles_ids, batch.smiles_len) # shape: (batch_size, max_length)
-        logits = model(batch, padding_smiles_ids, padding_smiles_masks)
-        
-        pred = predict_step(batch, model)
-        print(pred)
-        break
 
 
 
