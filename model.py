@@ -102,13 +102,13 @@ class NMRGraphEncoder(nn.Module):
             edge_dim = 1
         else:
             self.use_use_embed = True
-            self.edge_embed = nn.Linear(1, edge_dim) # norm
-            # self.edge_embed = nn.Sequential(
-            #         nn.Linear(1, edge_dim*2),  
-            #         nn.ReLU(),
-            #         nn.Linear(edge_dim*2, edge_dim)
-            # )
-        self.conv_layers = clones(TransformerConv(in_node_dim, hidden_node_dim, heads=num_heads, edge_dim=edge_dim), num_layers)
+            # self.edge_embed = nn.Linear(1, edge_dim) # norm
+            self.edge_embed = nn.Sequential(
+                    nn.Linear(1, edge_dim*2),  
+                    nn.SiLU(),
+                    nn.Linear(edge_dim*2, edge_dim)
+            )
+        self.conv_layers = clones(TransformerConv(in_node_dim, hidden_node_dim, heads=num_heads, edge_dim=edge_dim, dropout=dropout), num_layers)
         self.sublayers = clones(SublayerConnection(size=in_node_dim, dropout=dropout), num_layers)
         
         self.linear = nn.Linear(in_node_dim, in_node_dim)
