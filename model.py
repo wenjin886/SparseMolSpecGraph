@@ -43,7 +43,8 @@ class SublayerConnection(nn.Module):
 
 class NodeFeatureEmbedding(nn.Module):
     def __init__(self, mult_class_num, nH_class_num, 
-                 c_w_embed_dim=8, mult_embed_dim=32, nH_embed_dim=16):
+                 c_w_embed_dim=8, mult_embed_dim=32, nH_embed_dim=16,
+                 dropout=0.1):
                 #  out_dim=32, hidden_dim=64):
         """
         args:
@@ -69,7 +70,9 @@ class NodeFeatureEmbedding(nn.Module):
         self.centroid_embed = c(continuous_value_embed)
         self.width_embed = c(continuous_value_embed)
         node_feature_dim = mult_embed_dim + nH_embed_dim + c_w_embed_dim*2
-        self.linear = nn.Linear(node_feature_dim, node_feature_dim)
+        self.proj = nn.Sequential(nn.Linear(node_feature_dim, node_feature_dim), 
+                                    nn.SiLU(),
+                                    nn.Dropout(p=dropout))
 
 
        
@@ -84,7 +87,7 @@ class NodeFeatureEmbedding(nn.Module):
         cen_vec = self.centroid_embed(centroid.unsqueeze(-1))
         wid_vec = self.width_embed(width.unsqueeze(-1))
         x = torch.cat([cen_vec, wid_vec, nH_vec,  mult_vec], dim=-1)  # [N,all_feature_dim]
-        return self.linear(x).relu()
+        return self.proj(x)
       
 
 class NMRGraphEncoder(nn.Module):
@@ -182,7 +185,7 @@ class PeakGraphModule(pl.LightningModule):
                                                        mult_embed_dim=mult_embed_dim, 
                                                        nH_embed_dim=nH_embed_dim,
                                                        c_w_embed_dim=c_w_embed_dim,
-                                                       )
+                                                       dropout=dropout)
         in_node_dim = c_w_embed_dim*2 + mult_embed_dim + nH_embed_dim
         print('in_node_dim of node feature encoder', in_node_dim)
         assert in_node_dim % num_heads == 0, "in_node_dim must be divisible by num_heads"
