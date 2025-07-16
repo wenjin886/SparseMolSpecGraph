@@ -31,26 +31,21 @@ def predict_step(batch, model, device):
         pad_token_id=model.smiles_tokenizer.pad_token_id,
         num_return_sequences=10  # 返回前5个最佳序列
     )
-    predictions = model.smiles_tokenizer.batch_decode(output_ids, skip_special_tokens=True)
-    return model._postprocess_smiles(predictions)
+    predictions = model.smiles_tokenizer.batch_decode(output_ids)
+    tgt = model.smiles_tokenizer.batch_decode(smiles_ids)
+    
+    predictions = model._postprocess_smiles(predictions)
+    tgt = model._postprocess_smiles(tgt)
+    return predictions, tgt
 
 def generate_smiles(checkpoint_path, dataset):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
-    dataset_info_path = "../Dataset/h_nmr.json"
+    dataset_info_path = "../Dataset/h_nmr/h_nmr.json"
     with open(dataset_info_path, "r") as f:
         dataset_info = json.load(f)
         MULTIPLETS = dataset_info['MULTIPLETS']
         NUM_H = dataset_info['NUM_H']
 
-
-    smiles_tokenizer_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/smiles_tokenizer_fast/tokenizer.json"
-    smiles_tokenizer = PreTrainedTokenizerFast(tokenizer_file=smiles_tokenizer_path,
-                                                            bos_token="[BOS]",
-                                                            eos_token="[EOS]",
-                                                            pad_token="[PAD]",
-                                                            unk_token="[UNK]",
-                                                            padding_side="right" )
-    # len(smiles_tokenizer.get_vocab())
 
     model = NMR2MolGenerator.load_from_checkpoint(checkpoint_path)
     model.eval()
@@ -59,11 +54,16 @@ def generate_smiles(checkpoint_path, dataset):
     smiles_dataloader = DataLoader(dataset, batch_size=2, shuffle=True)
     
     for batch in smiles_dataloader:
-        pred = predict_step(batch, model)
+        batch = batch.to(device)
+        pred, tgt = predict_step(batch, model, device)
+        print(tgt)
         print(pred)
         break
 
 if __name__ == "__main__":
-    checkpoint_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/exp/exp_hnmr/hnmr_graph2smi_d512_nomap_formula_noproj_16-31-14-07-2025/last.ckpt"
-    dataset = torch.load("../Dataset/h_nmr/train_val_test_set_nomap_f_s_ids/test_set.pt")
+    # checkpoint_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/exp/exp_hnmr/hnmr_graph2smi_d512_lr2_nomap_graphconvdropout_14-39-15-07-2025/last.ckpt"
+    checkpoint_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/exp/exp_hnmr/hnmr_graph2smi_d512_lr2_nomap_convdropout_edgesilu16_nodenorm_13-18-16-07-2025/last.ckpt"
+    print("Loading dataset...")
+    dataset = torch.load("/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/train_val_test_set_nomap_f_s_ids/val_set.pt")
+    print("Generating...")
     generate_smiles(checkpoint_path, dataset)
