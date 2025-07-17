@@ -33,7 +33,8 @@ def predict_step(batch, model, device):
         bos_token_id=bos_token_id,
         eos_token_id=eos_token_id,
         pad_token_id=model.smiles_tokenizer.pad_token_id,
-        num_return_sequences=10  # 返回前n个最佳序列
+        num_return_sequences=10,  # 返回前n个最佳序列
+        max_length=120 
     )
     predictions = model.smiles_tokenizer.batch_decode(output_ids)
     print("predictions", len(predictions), predictions)
@@ -69,7 +70,7 @@ def generate_smiles(checkpoint_path, dataset):
         print("pred", len(pred), pred)
         assert len(pred) == len(tgt)
 
-        pred_data = pd.DataFrame({'pred': pred, 'target': test})
+        pred_data = pd.DataFrame({'pred': pred, 'target': tgt})
         pred_data['rank'] = pred_data.apply(lambda row : row['pred'].index(row['target']) if row['target'] in row['pred'] else 10, axis=1)
 
         for i in range(1, 11):
