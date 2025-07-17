@@ -288,25 +288,22 @@ class NMRFormulaEncoder(nn.Module):
                 nn.init.xavier_normal_(m.weight)
     
     def forward(self, src_ids, src_att_mask):
-        src_embed = self.formula_esrc_embedmbed(formula_ids)
-        src = torch.cat([spec_hidden_states, src_embed], dim=1) # (batch_size N_spec + N_formula, d_model)
+        src_embed = self.src_embed(src_ids)
 
         if len(src_att_mask.shape) == 2:
             src_att_mask = src_att_mask.unsqueeze(1)
         
-        src_embed = self.spec_formula_encoder(src, src_att_mask)
+        src_embed = self.spec_formula_encoder(src_embed, src_att_mask)
 
         return src_embed, src_att_mask
         
         
         
 
-class NMR2MolEncoderDecoder(nn.Module, GenerationMixin):
+class NMR2MolDecoder(nn.Module, GenerationMixin):
     def __init__(self, 
                  smiles_vocab_size,
-                 formula_vocab_size,
                  d_model=512, d_ff=2048, 
-                 encoder_head=8, encoder_layer=4,
                  decoder_head=8, N_decoder_layer=4, dropout=0.1, 
                  ):
         super().__init__()
@@ -380,7 +377,7 @@ class NMR2MolEncoderDecoder(nn.Module, GenerationMixin):
     def forward(self, input_ids, encoder_hidden_states, encoder_attention_mask, 
                 use_cache=False, past_key_values=None, **kwargs):
         """
-        input_ids: (B, T)
+        input_ids: (B, T) smiles ids
         encoder_hidden_states: src
         encoder_attention_mask: src_mask
         """
@@ -425,7 +422,7 @@ class NMR2MolEncoderDecoder(nn.Module, GenerationMixin):
     
 
 class NMRSeq2MolGenerator(pl.LightningModule):
-    def __init__(self, mult_class_num, nH_class_num, 
+    def __init__(self, 
                  smiles_tokenizer_path,
                  src_vocab_size=None,
                  spec_formula_encoder_head=8, 
@@ -450,17 +447,16 @@ class NMRSeq2MolGenerator(pl.LightningModule):
         
         
         self.spec_formula_encoder = NMRFormulaEncoder(src_vocab_size,
-                                                    d_model=d_model, d_ff=d_ff, 
-                                                    encoder_head=spec_formula_encoder_head, 
-                                                    encoder_layer=spec_formula_encoder_layer,
-                                                    dropout=dropout)
+                                                      d_model=d_model, d_ff=d_ff, 
+                                                      encoder_head=spec_formula_encoder_head, 
+                                                      encoder_layer=spec_formula_encoder_layer,
+                                                      dropout=dropout)
             
-        self.smiles_decoder = NMR2MolEncoderDecoder(smiles_vocab_size,
-                                                    formula_vocab_size,
-                                                    d_model=d_model, d_ff=d_ff, 
-                                                    decoder_head=decoder_head, 
-                                                    N_decoder_layer=N_decoder_layer, 
-                                                    dropout=dropout)
+        self.smiles_decoder = NMR2MolDecoder(smiles_vocab_size,
+                                             d_model=d_model, d_ff=d_ff, 
+                                             decoder_head=decoder_head, 
+                                             N_decoder_layer=N_decoder_layer, 
+                                             dropout=dropout)
         
         self.d_model = d_model
         self.warm_up_step = warm_up_step
@@ -469,12 +465,11 @@ class NMRSeq2MolGenerator(pl.LightningModule):
 
     
     
-    def forward(self, data, padding_smiles_ids, padding_smiles_masks, padding_src_ids, padding_src_att_mask):
+    def forward(self, padding_smiles_ids, padding_src_ids, padding_src_att_mask):
         
         src_embed, src_mask = self.spec_formula_encoder(padding_src_ids, padding_src_att_mask)
 
-        if padding_smiles_masks.dtype == torch.bool:
-            padding_smiles_masks = padding_smiles_masks.float()
+        
         decoder_output = self.smiles_decoder( input_ids=padding_smiles_ids,  encoder_hidden_states=src_embed, encoder_attention_mask=src_mask)
         # Extract logits from the decoder output
         if hasattr(decoder_output, 'logits'):
@@ -558,17 +553,10 @@ class NMRSeq2MolGenerator(pl.LightningModule):
     def _step(self, batch, batch_idx):
         device = batch.id.device
 
-        padding_smiles_ids, padding_smiles_masks = pad_str_ids(batch.smiles_ids, batch.smiles_len)
-        if self.use_formula:
-            padding_formula_ids, padding_formula_masks = pad_str_ids(batch.formula_ids, batch.formula_len)
-            padding_formula_ids, padding_formula_masks = padding_formula_ids.to(device), padding_formula_masks.to(device)
-        else:
-            padding_formula_ids, padding_formula_masks = None, None
-        logits = self(batch, 
-                      padding_smiles_ids.to(device), 
-                      padding_smiles_masks.to(device),
-                      padding_formula_ids,
-                      padding_formula_masks
+        
+        logits = self(padding_smiles_ids=batch["tgt_ids"].to(device), 
+                      padding_src_ids=batch["src_ids"].to(device),
+                      padding_src_att_mask=batch["src_mask"].to(device),
                     )
         return logits
 
@@ -585,11 +573,13 @@ class NMRSeq2MolGenerator(pl.LightningModule):
         logits = self._step(batch, batch_idx)
 
         smiles_pred_loss, preds = self._cal_loss(logits, self.smiles_decoder.tgt_y, norm=self.smiles_decoder.ntokens)
+        token_acc = self._cal_token_acc(logits, self.smiles_decoder.tgt_y)
         acc = self._cal_mol_acc(preds, self.smiles_decoder.tgt_y)
 
         batch_size = len(batch.id)
         # 提取目标：batch.masked_node_target 是 dict of tensors
         self.log("val_loss", smiles_pred_loss, batch_size=batch_size)
+        self.log("val_token_acc", token_acc, batch_size=batch_size)
         self.log("val_acc", acc, batch_size=batch_size)
         return smiles_pred_loss
     
@@ -597,11 +587,13 @@ class NMRSeq2MolGenerator(pl.LightningModule):
         logits = self._step(batch, batch_idx)
 
         smiles_pred_loss, preds = self._cal_loss(logits, self.smiles_decoder.tgt_y, norm=self.smiles_decoder.ntokens)
+        token_acc = self._cal_token_acc(logits, self.smiles_decoder.tgt_y)
         acc = self._cal_mol_acc(preds, self.smiles_decoder.tgt_y)
 
         batch_size = len(batch.id)
         # 提取目标：batch.masked_node_target 是 dict of tensors
         self.log("test_loss", smiles_pred_loss, batch_size=batch_size)
+        self.log("test_token_acc", token_acc, batch_size=batch_size)
         self.log("test_acc", acc, batch_size=batch_size)
         return smiles_pred_loss 
     
