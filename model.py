@@ -72,8 +72,8 @@ class NodeFeatureEmbedding(nn.Module):
         node_feature_dim = mult_embed_dim + nH_embed_dim + c_w_embed_dim*2
 
         self.linear = nn.Linear(node_feature_dim, node_feature_dim)
-        # self.proj = nn.Sequential(nn.Linear(node_feature_dim, node_feature_dim), 
-        #                             nn.SiLU())
+        self.proj = nn.Sequential(nn.Linear(node_feature_dim, node_feature_dim), 
+                                    nn.SiLU())
         # self.norm = LayerNorm(node_feature_dim)
         #                             # nn.Dropout(p=dropout))
 
@@ -91,7 +91,8 @@ class NodeFeatureEmbedding(nn.Module):
         wid_vec = self.width_embed(width.unsqueeze(-1))
         x = torch.cat([cen_vec, wid_vec, nH_vec,  mult_vec], dim=-1)  # [N,all_feature_dim]
 
-        return self.linear(x).relu()
+        # return self.linear(x).relu()
+        return self.proj(x)
         # return self.norm(self.proj(x))
       
 
@@ -110,12 +111,12 @@ class NMRGraphEncoder(nn.Module):
             edge_dim = 1
         else:
             self.use_use_embed = True
-            self.edge_embed = nn.Linear(1, edge_dim) # norm
-            # self.edge_embed = nn.Sequential(
-            #         nn.Linear(1, edge_dim*2),  
-            #         nn.SiLU(),
-            #         nn.Linear(edge_dim*2, edge_dim)
-            # )
+            # self.edge_embed = nn.Linear(1, edge_dim) # norm
+            self.edge_embed = nn.Sequential(
+                    nn.Linear(1, edge_dim*2),  
+                    nn.SiLU(),
+                    nn.Linear(edge_dim*2, edge_dim)
+            )
         self.conv_layers = clones(TransformerConv(in_node_dim, hidden_node_dim, heads=num_heads, edge_dim=edge_dim, dropout=dropout), num_layers)
         self.sublayers = clones(SublayerConnection(size=in_node_dim, dropout=dropout), num_layers)
         

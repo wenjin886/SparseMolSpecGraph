@@ -182,7 +182,7 @@ echo "Training..."
 #     --spec_formula_encoder_layer 4 \
 
 python train_gen_mol.py \
-    --exp_name hnmr_graph2smi_d512_lr2_nomap_convdropout_edgesilu16_nodenorm \
+    --exp_name hnmr_graph2smi_d512_lr2_nomap_convdropout_edgesilu64 \
     --exp_save_path ../exp/exp_hnmr \
     --dataset_path ../Dataset/h_nmr/train_val_test_set_nomap_f_s_ids \
     --smiles_tokenizer_path ../Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json \
@@ -199,12 +199,13 @@ python train_gen_mol.py \
     --mult_embed_dim 256 \
     --nH_embed_dim 128 \
     --c_w_embed_dim 64 \
-    --edge_dim 16 \
+    --edge_dim 64 \
     --d_model 512 \
     --d_ff 2048 \
     --use_formula \
     --spec_formula_encoder_head 8 \
     --spec_formula_encoder_layer 4 \
+    --loss_monitor val_acc \
 
 
 
