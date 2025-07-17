@@ -19,7 +19,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torch_geometric")
 
 from model_seq2mol import NMRSeq2MolGenerator
-from loader import NMR2MolDataLoader, NMR2MolDataset
+from loader import create_nmr2mol_dataloader, NMR2MolDataset
 
 def get_formatted_exp_name(exp_name, resume=False):
     formatted_time = datetime.now().strftime("%H-%M_%d-%m-%Y")
@@ -37,7 +37,7 @@ def main(args):
     src_tokenizer = PreTrainedTokenizerFast(tokenizer_file=args.src_tokenizer_path)
     tgt_tokenizer = PreTrainedTokenizerFast(tokenizer_file=args.tgt_tokenizer_path)
 
-    model = NMRSeq2MolGenerator(smiles_tokenizer_path=args.smiles_tokenizer_path,
+    model = NMRSeq2MolGenerator(smiles_tokenizer_path=args.tgt_tokenizer_path,
                                 src_vocab_size=len(src_tokenizer.get_vocab()), 
                                 spec_formula_encoder_head=args.spec_formula_encoder_head, 
                                 spec_formula_encoder_layer=args.spec_formula_encoder_layer,
@@ -122,9 +122,9 @@ def main(args):
         
     
 
-    train_dataloader = NMR2MolDataLoader(train_set, batch_size=args.batch_size, shuffle=True,num_workers=17)
-    val_dataloader = NMR2MolDataLoader(val_set, batch_size=args.batch_size, shuffle=True,num_workers=17)
-    test_dataloader = NMR2MolDataLoader(test_set, batch_size=args.batch_size, shuffle=True,num_workers=17)
+    train_dataloader = create_nmr2mol_dataloader(train_set, batch_size=args.batch_size,  num_workers=17)
+    val_dataloader = create_nmr2mol_dataloader(val_set, batch_size=args.batch_size, num_workers=17)
+    test_dataloader = create_nmr2mol_dataloader(test_set, batch_size=args.batch_size, num_workers=17)
 
     trainer.fit(model, train_dataloader, val_dataloader)
     
@@ -142,13 +142,20 @@ if __name__ == "__main__":
     parser.add_argument('--data_dir_path', type=str, required=True)
     parser.add_argument('--src_tokenizer_path', type=str, required=True)
     parser.add_argument('--tgt_tokenizer_path', type=str, required=True)
-    parser.add_argument('--smiles_tokenizer_path', type=str, required=True)
+
+    parser.add_argument('--spec_formula_encoder_head', type=int, default=8)
+    parser.add_argument('--spec_formula_encoder_layer', type=int, default=4)
+    parser.add_argument('--d_model', type=int, default=512)
+    parser.add_argument('--d_ff', type=int, default=2048)
+    parser.add_argument('--decoder_head', type=int, default=8)
+    parser.add_argument('--N_decoder_layer', type=int, default=4)
+    parser.add_argument('--dropout', type=int, default=0.1)
 
     parser.add_argument('--code_test', action='store_true')
     parser.add_argument('--warm_up_step', type=int, default=3000)
     parser.add_argument('--lr', type=float, default=1)
     parser.add_argument('--max_epochs', type=int, default=50)
-    parser.add_argument('--batch_size', type=int, default=128)
+    parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--save_top_k', type=int, default=3)
     parser.add_argument('--save_every_n_epochs', type=int, default=1)
     parser.add_argument('--seed', type=int, default=42)
@@ -156,7 +163,7 @@ if __name__ == "__main__":
     
     parser.add_argument('--wandb_project', type=str, default='NMR-Graph')
     parser.add_argument('--precision', type=str, default='medium',choices=['medium', 'high'])
-    parser.add_argument('--loss_monitor', type=str, default='val_loss')
+    parser.add_argument('--loss_monitor', type=str, default='val_acc')
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
     parser.add_argument('--early_stop', action='store_true')
     

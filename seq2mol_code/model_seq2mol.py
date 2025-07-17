@@ -13,7 +13,6 @@ import math
 import copy
 import rdkit.Chem as Chem
 
-from model import PeakGraphModule
 
 def pad_str_ids(str_ids_list, str_len, pad_token=0):
     """
@@ -551,12 +550,9 @@ class NMRSeq2MolGenerator(pl.LightningModule):
         return correct_pred/len(preds) if total > 0 else 0.0
     
     def _step(self, batch, batch_idx):
-        device = batch.id.device
-
-        
-        logits = self(padding_smiles_ids=batch["tgt_ids"].to(device), 
-                      padding_src_ids=batch["src_ids"].to(device),
-                      padding_src_att_mask=batch["src_mask"].to(device),
+        logits = self(padding_smiles_ids=batch["tgt_ids"], 
+                      padding_src_ids=batch["src_ids"],
+                      padding_src_att_mask=batch["src_mask"],
                     )
         return logits
 
@@ -565,7 +561,7 @@ class NMRSeq2MolGenerator(pl.LightningModule):
 
         smiles_pred_loss, _ = self._cal_loss(logits, self.smiles_decoder.tgt_y, norm=self.smiles_decoder.ntokens)
 
-        batch_size = len(batch.id)
+        batch_size = batch["tgt_ids"].shape[0]
         self.log("train_loss", smiles_pred_loss, batch_size=batch_size)
         return smiles_pred_loss
     
@@ -576,7 +572,8 @@ class NMRSeq2MolGenerator(pl.LightningModule):
         token_acc = self._cal_token_acc(logits, self.smiles_decoder.tgt_y)
         acc = self._cal_mol_acc(preds, self.smiles_decoder.tgt_y)
 
-        batch_size = len(batch.id)
+        batch_size = batch["tgt_ids"].shape[0]
+
         # 提取目标：batch.masked_node_target 是 dict of tensors
         self.log("val_loss", smiles_pred_loss, batch_size=batch_size)
         self.log("val_token_acc", token_acc, batch_size=batch_size)
@@ -590,7 +587,8 @@ class NMRSeq2MolGenerator(pl.LightningModule):
         token_acc = self._cal_token_acc(logits, self.smiles_decoder.tgt_y)
         acc = self._cal_mol_acc(preds, self.smiles_decoder.tgt_y)
 
-        batch_size = len(batch.id)
+        batch_size = batch["tgt_ids"].shape[0]
+
         # 提取目标：batch.masked_node_target 是 dict of tensors
         self.log("test_loss", smiles_pred_loss, batch_size=batch_size)
         self.log("test_token_acc", token_acc, batch_size=batch_size)
