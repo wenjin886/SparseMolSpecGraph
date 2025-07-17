@@ -306,12 +306,10 @@ class NMRFormulaEncoder(nn.Module):
         
         
 
-class NMR2MolEncoderDecoder(nn.Module, GenerationMixin):
+class NMR2MolDecoder(nn.Module, GenerationMixin):
     def __init__(self, 
                  smiles_vocab_size,
-                 formula_vocab_size,
                  d_model=512, d_ff=2048, 
-                 encoder_head=8, encoder_layer=4,
                  decoder_head=8, N_decoder_layer=4, dropout=0.1, 
                  ):
         super().__init__()
@@ -328,11 +326,9 @@ class NMR2MolEncoderDecoder(nn.Module, GenerationMixin):
         self.lm_head = nn.Linear(d_model, self.smiles_vocab_size)
 
         # Add generation_config for GenerationMixin
-        
         self.generation_config = GenerationConfig()
         
         # Add config attribute for GenerationMixin
-        
         self.config = PretrainedConfig()
         self.config.is_encoder_decoder = False
         self.config.vocab_size = smiles_vocab_size
@@ -492,12 +488,12 @@ class NMR2MolGenerator(pl.LightningModule):
                                                      encoder_layer=spec_formula_encoder_layer,
                                                      dropout=dropout)
             
-        self.smiles_decoder = NMR2MolEncoderDecoder(smiles_vocab_size,
-                                                    formula_vocab_size,
-                                                    d_model=d_model, d_ff=d_ff, 
-                                                    decoder_head=decoder_head, 
-                                                    N_decoder_layer=N_decoder_layer, 
-                                                    dropout=dropout)
+        self.smiles_decoder = NMR2MolDecoder(smiles_vocab_size,
+                                             formula_vocab_size,
+                                             d_model=d_model, d_ff=d_ff, 
+                                             decoder_head=decoder_head, 
+                                             N_decoder_layer=N_decoder_layer, 
+                                             dropout=dropout)
         
         self.d_model = d_model
         self.warm_up_step = warm_up_step
@@ -557,6 +553,14 @@ class NMR2MolGenerator(pl.LightningModule):
         )
         preds = torch.argmax(log_probs, dim=-1)
         return sloss, preds
+    
+    def _cal_token_acc(self, logits, tgt):
+        mask = tgt != 0
+        token_preds = torch.argmax(logits, dim=-1)
+        correct = ((token_preds == tgt) & mask).sum().item()
+        total = mask.sum().item()
+        token_acc = correct / total if total > 0 else 0.0
+        return token_acc
     
     def _postprocess_smiles(self, decoded_str):
         if not isinstance(decoded_str, str):
@@ -630,11 +634,13 @@ class NMR2MolGenerator(pl.LightningModule):
         logits = self._step(batch, batch_idx)
 
         smiles_pred_loss, preds = self._cal_loss(logits, self.smiles_decoder.tgt_y, norm=self.smiles_decoder.ntokens)
+        token_acc = self._cal_token_acc(logits, self.smiles_decoder.tgt_y)
         acc = self._cal_mol_acc(preds, self.smiles_decoder.tgt_y)
 
         batch_size = len(batch.id)
         # 提取目标：batch.masked_node_target 是 dict of tensors
         self.log("val_loss", smiles_pred_loss, batch_size=batch_size)
+        self.log("val_token_acc", token_acc, batch_size=batch_size)
         self.log("val_acc", acc, batch_size=batch_size)
         return smiles_pred_loss
     
@@ -642,21 +648,29 @@ class NMR2MolGenerator(pl.LightningModule):
         logits = self._step(batch, batch_idx)
 
         smiles_pred_loss, preds = self._cal_loss(logits, self.smiles_decoder.tgt_y, norm=self.smiles_decoder.ntokens)
+        token_acc = self._cal_token_acc(logits, self.smiles_decoder.tgt_y)
         acc = self._cal_mol_acc(preds, self.smiles_decoder.tgt_y)
 
         batch_size = len(batch.id)
         # 提取目标：batch.masked_node_target 是 dict of tensors
         self.log("test_loss", smiles_pred_loss, batch_size=batch_size)
+        self.log("test_token_acc", token_acc, batch_size=batch_size)
         self.log("test_acc", acc, batch_size=batch_size)
         return smiles_pred_loss 
     
     def configure_optimizers(self):
-        # 使用 AdamW 优化器
-        optimizer = torch.optim.AdamW(
+        # # 使用 AdamW 优化器
+        # optimizer = torch.optim.AdamW(
+        #     self.parameters(),
+        #     lr=self.lr,
+        #     amsgrad=True,
+        #     weight_decay=1e-12
+        # )
+        optimizer = torch.optim.Adam(
             self.parameters(),
             lr=self.lr,
-            amsgrad=True,
-            weight_decay=1e-12
+            betas=(0.9, 0.998),
+            eps=1e-9
         )
 
         def rate(step):
