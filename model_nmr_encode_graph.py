@@ -118,8 +118,20 @@ class NMRGraphEncoder(nn.Module):
                     nn.SiLU(),
                     nn.Linear(edge_dim*2, edge_dim)
             )
+            
         self.conv_layers = clones(TransformerConv(in_node_dim, hidden_node_dim, heads=num_heads, edge_dim=edge_dim, dropout=dropout), num_layers)
-        self.sublayers = clones(SublayerConnection(size=in_node_dim, dropout=dropout), num_layers)
+        # self.sublayers = clones(SublayerConnection(size=in_node_dim, dropout=dropout), num_layers)
+        self.conv_sublayers = clones(SublayerConnection(size=in_node_dim, dropout=dropout), num_layers)
+        
+        conv_out_dim = hidden_node_dim*num_heads
+        ff = nn.Sequential(
+            nn.Linear(conv_out_dim, in_node_dim*4),  
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(in_node_dim*4, in_node_dim)
+        )
+        self.ff_layers = clones(ff, num_layers)
+        self.ff_sublayers = clones(SublayerConnection(size=in_node_dim, dropout=dropout), num_layers)
         
 
     def forward(self, x, edge_index, batch, edge_attr):
@@ -128,8 +140,9 @@ class NMRGraphEncoder(nn.Module):
         if self.use_use_embed:
             edge_attr = self.edge_embed(edge_attr)
         # 通过所有卷积层
-        for i, conv in enumerate(self.conv_layers):
-            x = self.sublayers[i](x, lambda x: conv(x, edge_index, edge_attr))
+        for i in range(self.num_layers):
+            x = self.conv_sublayers[i](x, lambda x: self.conv_layers[i](x, edge_index, edge_attr))
+            x = self.ff_sublayers[i](x, lambda x: self.ff_layers[i](x))
         
         return x
 
@@ -166,7 +179,8 @@ class MultiTaskNodePredictor(nn.Module):
 
 class PeakGraphModule(pl.LightningModule):
     def __init__(self, mult_class_num, nH_class_num, 
-                 mult_embed_dim=16, nH_embed_dim=8, c_w_embed_dim=8,
+                in_node_dim=512,
+                #  mult_embed_dim=16, nH_embed_dim=8, c_w_embed_dim=8,
                  num_layers=4, num_heads=4,
                  edge_dim=1,
                  dropout=0.1,
@@ -184,17 +198,23 @@ class PeakGraphModule(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.node_feature_encoder = NodeFeatureEmbedding(mult_class_num, nH_class_num, 
-                                                       mult_embed_dim=mult_embed_dim, 
-                                                       nH_embed_dim=nH_embed_dim,
-                                                       c_w_embed_dim=c_w_embed_dim,
+                                                         feature_dim=in_node_dim,
+                                                    #    mult_embed_dim=mult_embed_dim, 
+                                                    #    nH_embed_dim=nH_embed_dim,
+                                                    #    c_w_embed_dim=c_w_embed_dim,
                                                        dropout=dropout)
-        in_node_dim = c_w_embed_dim*2 + mult_embed_dim + nH_embed_dim
+        # in_node_dim = c_w_embed_dim*2 + mult_embed_dim + nH_embed_dim
         print('in_node_dim of node feature encoder', in_node_dim)
         assert in_node_dim % num_heads == 0, "in_node_dim must be divisible by num_heads"
         hidden_node_dim = in_node_dim // num_heads
-        self.encoder = NMRGraphEncoder(in_node_dim, hidden_node_dim, num_layers, num_heads, edge_dim=edge_dim, dropout=dropout)
+        self.encoder = NMRGraphEncoder(in_node_dim, hidden_node_dim, 
+                                       num_layers, num_heads, edge_dim=edge_dim, 
+                                       dropout=dropout)
         self.predictor = MultiTaskNodePredictor(in_node_dim, mult_class_num, nH_class_num,
-                                                mult_embed_dim, nH_embed_dim, c_w_embed_dim, c_w_embed_dim)
+                                                mult_embed_dim=in_node_dim, 
+                                                nH_embed_dim=in_node_dim, 
+                                                cen_embed_dim=in_node_dim,
+                                                wid_embed_dim=in_node_dim)
         self.in_node_dim = in_node_dim
 
         self.warm_up_step = warm_up_step

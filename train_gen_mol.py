@@ -142,14 +142,15 @@ def main(args):
     checkpoint_callback = ModelCheckpoint(dirpath=save_dirpath, 
                                           save_top_k=args.save_top_k, 
                                           every_n_epochs=args.save_every_n_epochs,
-                                          monitor=args.loss_monitor,
+                                          monitor=args.monitor,
+                                          mode=args.monitor_mode,
                                           save_last=True)
     lr_monitor = LearningRateMonitor(logging_interval='step')
     if args.early_stop != -1:
         early_stop_callback = EarlyStopping(
-                monitor='val_loss',      # 监控指标，例如验证集损失
+                monitor='val_acc',      # 监控指标，例如验证集损失
                 patience=args.early_stop,             # 如果n个epoch内指标未改善则停止训练
-                mode='min',              # 监控指标越小越好（如损失函数）
+                mode='max',              # 监控指标越小越好（如损失函数）
                 verbose=True             # 是否打印信息
             )
         callbacks = [checkpoint_callback, lr_monitor, early_stop_callback]
@@ -255,8 +256,9 @@ if __name__ == "__main__":
 
     
     parser.add_argument('--wandb_project', type=str, default='NMR-Graph')
-    parser.add_argument('--precision', type=str, default='medium',choices=['medium', 'high'])
-    parser.add_argument('--loss_monitor', type=str, default='val_loss')
+    parser.add_argument('--precision', type=str, default='medium', choices=['medium', 'high'])
+    parser.add_argument('--monitor', type=str, default='val_acc')
+    parser.add_argument('--monitor_mode', type=str, default='max', choices=['min', 'max'])
     
     args = parser.parse_args()
     main(args)

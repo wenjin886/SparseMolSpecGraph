@@ -13,7 +13,8 @@ import math
 import copy
 import rdkit.Chem as Chem
 
-from model import PeakGraphModule
+# from model import PeakGraphModule
+from model_nmr_encode_graph import PeakGraphModule
 
 def pad_str_ids(str_ids_list, str_len, pad_token=0):
     """
@@ -75,10 +76,6 @@ class SublayerConnection(nn.Module):
     def forward(self, x, sublayer):
         "Apply residual connection to any sublayer with the same size."
         return x + self.dropout(sublayer(self.norm(x)))
-    
-
-
-
 
 def subsequent_mask(size):
     "Mask out subsequent positions."
@@ -473,8 +470,13 @@ class NMR2MolGenerator(pl.LightningModule):
         smiles_vocab_size = len(self.smiles_tokenizer.get_vocab())
         
 
+        # self.graph_encoder = PeakGraphModule(mult_class_num=mult_class_num, nH_class_num=nH_class_num, 
+        #                         mult_embed_dim=mult_embed_dim, nH_embed_dim=nH_embed_dim, c_w_embed_dim=c_w_embed_dim,
+        #                         num_layers=num_layers, num_heads=num_heads, edge_dim=edge_dim, dropout=graph_dropout)
+
         self.graph_encoder = PeakGraphModule(mult_class_num=mult_class_num, nH_class_num=nH_class_num, 
-                                mult_embed_dim=mult_embed_dim, nH_embed_dim=nH_embed_dim, c_w_embed_dim=c_w_embed_dim,
+                                in_node_dim=d_model,
+                                # mult_embed_dim=mult_embed_dim, nH_embed_dim=nH_embed_dim, c_w_embed_dim=c_w_embed_dim,
                                 num_layers=num_layers, num_heads=num_heads, edge_dim=edge_dim, dropout=graph_dropout)
 
         spec_embed_dim = self.graph_encoder.in_node_dim
@@ -489,7 +491,6 @@ class NMR2MolGenerator(pl.LightningModule):
                                                      dropout=dropout)
             
         self.smiles_decoder = NMR2MolDecoder(smiles_vocab_size,
-                                             formula_vocab_size,
                                              d_model=d_model, d_ff=d_ff, 
                                              decoder_head=decoder_head, 
                                              N_decoder_layer=N_decoder_layer, 
@@ -606,7 +607,6 @@ class NMR2MolGenerator(pl.LightningModule):
     
     def _step(self, batch, batch_idx):
         device = batch.id.device
-
         padding_smiles_ids, padding_smiles_masks = pad_str_ids(batch.smiles_ids, batch.smiles_len)
         if self.use_formula:
             padding_formula_ids, padding_formula_masks = pad_str_ids(batch.formula_ids, batch.formula_len)
