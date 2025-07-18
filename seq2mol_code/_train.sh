@@ -8,5 +8,10 @@ python train.py \
     --tgt_tokenizer_path "./tokenizer/tgt_tokenizer/smiles_tokenizer_fast/tokenizer.json" \
     --warm_up_step 8000 \
     --lr 2 \
-    --batch_size 512
+    --batch_size 512 \
+    --max_epochs 500 \
+    --resume \
+    --checkpoint_path /rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/exp/exp_hnmr_seq2mol/seq2mol_15-58_17-07-2025/last.ckpt \
+    --monitor val_acc \
+    --monitor_mode max \
     # --code_test \

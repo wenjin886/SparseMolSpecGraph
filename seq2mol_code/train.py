@@ -37,14 +37,18 @@ def main(args):
     src_tokenizer = PreTrainedTokenizerFast(tokenizer_file=args.src_tokenizer_path)
     tgt_tokenizer = PreTrainedTokenizerFast(tokenizer_file=args.tgt_tokenizer_path)
 
-    model = NMRSeq2MolGenerator(smiles_tokenizer_path=args.tgt_tokenizer_path,
-                                src_vocab_size=len(src_tokenizer.get_vocab()), 
-                                spec_formula_encoder_head=args.spec_formula_encoder_head, 
-                                spec_formula_encoder_layer=args.spec_formula_encoder_layer,
-                                d_model=args.d_model, d_ff=args.d_ff, 
-                                decoder_head=args.decoder_head, N_decoder_layer=args.N_decoder_layer, 
-                                dropout=args.dropout,
-                                warm_up_step=args.warm_up_step, lr=args.lr)
+    if args.resume:
+        exp_name = get_formatted_exp_name(args.exp_name, resume=True)
+        model = NMRSeq2MolGenerator.load_from_checkpoint(args.checkpoint_path)
+    else:
+        model = NMRSeq2MolGenerator(smiles_tokenizer_path=args.tgt_tokenizer_path,
+                                    src_vocab_size=len(src_tokenizer.get_vocab()), 
+                                    spec_formula_encoder_head=args.spec_formula_encoder_head, 
+                                    spec_formula_encoder_layer=args.spec_formula_encoder_layer,
+                                    d_model=args.d_model, d_ff=args.d_ff, 
+                                    decoder_head=args.decoder_head, N_decoder_layer=args.N_decoder_layer, 
+                                    dropout=args.dropout,
+                                    warm_up_step=args.warm_up_step, lr=args.lr)
     print(model)
 
     exp_name = get_formatted_exp_name(args.exp_name)
@@ -76,12 +80,13 @@ def main(args):
     checkpoint_callback = ModelCheckpoint(dirpath=save_dirpath, 
                                           save_top_k=args.save_top_k, 
                                           every_n_epochs=args.save_every_n_epochs,
-                                          monitor=args.loss_monitor,
+                                          monitor=args.monitor,
+                                          mode=args.monitor_mode,
                                           save_last=True)
     lr_monitor = LearningRateMonitor(logging_interval='step')
     if args.early_stop:
         early_stop_callback = EarlyStopping(
-                monitor=args.loss_monitor,      # 监控指标，例如验证集损失
+                monitor=args.monitor,      # 监控指标，例如验证集损失
                 patience=5,             # 如果10个epoch内指标未改善则停止训练
                 mode='min',              # 监控指标越小越好（如损失函数）
                 verbose=True             # 是否打印信息
@@ -126,7 +131,9 @@ def main(args):
     val_dataloader = create_nmr2mol_dataloader(val_set, batch_size=args.batch_size, num_workers=17)
     test_dataloader = create_nmr2mol_dataloader(test_set, batch_size=args.batch_size, num_workers=17)
 
-    trainer.fit(model, train_dataloader, val_dataloader)
+    trainer.fit(model, train_dataloader, val_dataloader,
+                ckpt_path=args.checkpoint_path if args.resume else None
+                )
     
     # 在code_test模式下直接测试，不使用checkpoint
     if args.code_test:
@@ -139,6 +146,8 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument('--exp_name', type=str, required=True)
     parser.add_argument('--exp_save_path', type=str, default='../exp')
+    parser.add_argument('--resume', action='store_true')
+    parser.add_argument('--checkpoint_path', type=str, default=None)
     parser.add_argument('--data_dir_path', type=str, required=True)
     parser.add_argument('--src_tokenizer_path', type=str, required=True)
     parser.add_argument('--tgt_tokenizer_path', type=str, required=True)
@@ -163,7 +172,8 @@ if __name__ == "__main__":
     
     parser.add_argument('--wandb_project', type=str, default='NMR-Graph')
     parser.add_argument('--precision', type=str, default='medium',choices=['medium', 'high'])
-    parser.add_argument('--loss_monitor', type=str, default='val_acc')
+    parser.add_argument('--monitor', type=str, default='val_acc')
+    parser.add_argument('--monitor_mode', type=str, default='max', choices=['min', 'max'])
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
     parser.add_argument('--early_stop', action='store_true')
     
