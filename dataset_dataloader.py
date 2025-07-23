@@ -47,7 +47,8 @@ def single_spectrum_to_graph(peaks, id, smiles):
     # 2. 构造边（基于是否有相同的 J 耦合值）
     edge_index = fully_connected_edge_index(num_peaks)
     # print(edge_index)
-    edge_attr = [ float(centroids[i] - centroids[j]) for i, j in zip(edge_index[0], edge_index[1])] # 有向图
+    # edge_attr = [ float(centroids[i] - centroids[j]) for i, j in zip(edge_index[0], edge_index[1])] # 有向图
+    edge_attr = [ float(centroids[j] - centroids[i]) for i, j in zip(edge_index[0], edge_index[1])] # 有向图
     # print(edge_attr)
 
     data = Data(id=id, smiles=smiles, num_nodes=num_peaks,
@@ -118,7 +119,7 @@ def create_masked_data(data, mask_ratio=0.1):
     
     return masked_data
 
-def process_origin_data(data_dir, save_dir, dataset_name):
+def process_origin_data(data_dir, save_dir=None, dataset_name=None, save=True):
     """
     Now just for H NMR spectra
     """
@@ -172,23 +173,24 @@ def process_origin_data(data_dir, save_dir, dataset_name):
         "width": {"max": float(max(all_peak_widths)), "min": float(min(all_peak_widths)), "mean": float(width_mean), "std": float(width_std)},
         "num_peaks": {"max": float(max(num_peaks)), "min": float(min(num_peaks)), "mean": float(num_peaks_mean), "std": float(num_peaks_std)}
     }
-    with open(os.path.join(save_dir, dataset_name+'.json'), "w") as f:
-        json.dump(dataset_info, f, indent=4)
+    
 
     h_nmr_dataset = []
-    masked_hnmr_dataset = []
     for id, row in data_df.iterrows():
         data_i = single_spectrum_to_graph(row['h_nmr_peaks'], id, row['smiles'])
         h_nmr_dataset.append(data_i)
-        masked_hnmr_dataset.append(create_masked_data(data_i))
     print(len(h_nmr_dataset))
-    torch.save(h_nmr_dataset, os.path.join(save_dir, dataset_name+'.pt'))
-    torch.save(masked_hnmr_dataset, os.path.join(save_dir, dataset_name+'_masked.pt'))
+    if save:
+        with open(os.path.join(save_dir, dataset_name+'.json'), "w") as f:
+            json.dump(dataset_info, f, indent=4)
+        torch.save(h_nmr_dataset, os.path.join(save_dir, dataset_name+'.pt'))
+    return h_nmr_dataset, dataset_info
 
 
 
 def processing_hnmr_cls_label(dataset_path, dataset_info_path,
-                              mult_map_info_path, nh_map_info_path, save_path):
+                              mult_map_info_path, nh_map_info_path, 
+                              save_path=None, save=True):
     
     print(dataset_info_path)
     with open(dataset_info_path, "r") as f:
@@ -228,17 +230,20 @@ def processing_hnmr_cls_label(dataset_path, dataset_info_path,
             break
         mapped_dataset.append(data)
     
-    torch.save(mapped_dataset, os.path.join(save_path, "h_nmr_label_mapper.pt"))
+    if save:
+        torch.save(mapped_dataset, os.path.join(save_path, "h_nmr_label_mapper.pt"))
+    return mapped_dataset
     
-def generate_masked_node_dataset(unmasked_dataset_path, save_name):
+def generate_masked_node_dataset(unmasked_dataset_path, save_name=None, save=True):
     unmaksed_dataset = torch.load(unmasked_dataset_path)
     masked_dataset = []
     for data_i in tqdm(unmaksed_dataset, total=len(unmaksed_dataset)):
         masked_dataset.append(create_masked_data(data_i))
-    
-    torch.save(masked_dataset, os.path.join(os.path.dirname(unmasked_dataset_path), save_name))
+    if save:
+        torch.save(masked_dataset, os.path.join(os.path.dirname(unmasked_dataset_path), save_name))
+    return masked_dataset
 
-def generate_formula_dataset(dataset_path, save_name):
+def generate_formula_dataset(dataset_path, save_name=None, save=True):
     print(f"Loading dataset... ({dataset_path})")
     dataset = torch.load(dataset_path)
     formula_dataset = []
@@ -246,7 +251,9 @@ def generate_formula_dataset(dataset_path, save_name):
         formula = rdMolDescriptors.CalcMolFormula(Chem.MolFromSmiles(data_i.smiles))
         data_i.formula = formula
         formula_dataset.append(data_i)
-    torch.save(formula_dataset, os.path.join(os.path.dirname(dataset_path), save_name))
+    if save:
+        torch.save(formula_dataset, os.path.join(os.path.dirname(dataset_path), save_name))
+    return formula_dataset
     
 
 def generate_smiles_ids_and_formula_ids_dataset(unmasked_dataset_path, 
@@ -288,6 +295,7 @@ def generate_smiles_ids_and_formula_ids_dataset(unmasked_dataset_path,
             break
     if save:
         torch.save(smiles_dataset, os.path.join(os.path.dirname(unmasked_dataset_path), save_name))
+    return smiles_dataset
 
 
 if __name__ == "__main__":
@@ -311,11 +319,19 @@ if __name__ == "__main__":
     # dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/h_nmr_label_mapped.pt"
     # generate_formula_dataset(dataset_path, "hnmr_labelmapped_with_formula.pt")
     
-    smiles_tokenizer_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json"
-    formula_tokenizer_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/formula_tokenizer_fast/tokenizer.json"
-    # dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/hnmr_labelmapped_with_formula.pt"
-    dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/hnmr_with_formula.pt"
-    # generate_smiles_ids_and_formula_ids_dataset(dataset_path, smiles_tokenizer_path, formula_tokenizer_path, "hnmr_labelmapped_with_smiles_and_formula_ids.pt")
-    generate_smiles_ids_and_formula_ids_dataset(dataset_path, smiles_tokenizer_path, formula_tokenizer_path, "hnmr_with_smiles_and_formula_ids.pt")
+    # smiles_tokenizer_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json"
+    # formula_tokenizer_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/formula_tokenizer_fast/tokenizer.json"
+    # # dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/hnmr_labelmapped_with_formula.pt"
+    # dataset_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/hnmr_with_formula.pt"
+    # # generate_smiles_ids_and_formula_ids_dataset(dataset_path, smiles_tokenizer_path, formula_tokenizer_path, "hnmr_labelmapped_with_smiles_and_formula_ids.pt")
+    # generate_smiles_ids_and_formula_ids_dataset(dataset_path, smiles_tokenizer_path, formula_tokenizer_path, "hnmr_with_smiles_and_formula_ids.pt")
+
+    # Edge change direction
+    data_dir = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/multimodal_spectroscopic_dataset"
+    # data_dir = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/multimodal-spectroscopic-dataset/data/example_data"
+    save_dir = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/Dataset/h_nmr/_hnmr_edgedir"
+    dataset = process_origin_data(data_dir, save_dir, dataset_name="hnmr_newedgedirec")
+    # dataset = 
+
     
 
