@@ -88,7 +88,7 @@ def main(args):
                     NUM_H = nh_map_info['nh_label_to_id']
             
             print(f"lable num | MULTIPLETS: {len(MULTIPLETS)} | NUM_H: {len(NUM_H)}")
-
+            print(f"edge dim: {args.edge_dim} ({type(args.edge_dim)})")
             model = NMR2MolGenerator(
                         mult_class_num=len(MULTIPLETS), 
                         nH_class_num=len(NUM_H), 
@@ -234,7 +234,7 @@ if __name__ == "__main__":
     parser.add_argument('--mult_embed_dim', type=int, default=128)
     parser.add_argument('--nH_embed_dim', type=int, default=64)
     parser.add_argument('--c_w_embed_dim', type=int, default=64)
-    parser.add_argument('--edge_dim', type=int, default=-1, help="edge dim is -1: direct use edge attr input")
+    parser.add_argument('--edge_dim', type=eval, default=-1, help="edge dim is -1: direct use edge attr input")
     parser.add_argument('--num_layers', type=int, default=4)
     parser.add_argument('--num_heads', type=int, default=4)
     parser.add_argument('--graph_dropout', type=float, default=0.1)
