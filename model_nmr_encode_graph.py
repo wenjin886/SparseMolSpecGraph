@@ -107,11 +107,14 @@ class NMRGraphEncoder(nn.Module):
         self.hidden_node_dim = hidden_node_dim
         self.num_layers = num_layers
         
-        if edge_dim == -1:
-            self.use_use_embed = False
+        if edge_dim is None:
+            self.use_edge = False
+            edge_dim = None
+        elif edge_dim == -1:
+            self.use_edge_embed = False
             edge_dim = 1
         else:
-            self.use_use_embed = True
+            self.use_edge_embed = True
             # self.edge_embed = nn.Linear(1, edge_dim) # norm
             self.edge_embed = nn.Sequential(
                     nn.Linear(1, edge_dim*2),  
@@ -136,9 +139,16 @@ class NMRGraphEncoder(nn.Module):
 
     def forward(self, x, edge_index, batch, edge_attr):
         
-        edge_attr = edge_attr.unsqueeze(-1)  # 变成 [num_edges, 1]
-        if self.use_use_embed:
-            edge_attr = self.edge_embed(edge_attr)
+        # edge_attr = edge_attr.unsqueeze(-1)  # 变成 [num_edges, 1]
+        # if self.use_use_embed:
+        #     edge_attr = self.edge_embed(edge_attr)
+        if not self.use_edge: 
+            edge_attr = None
+        else:
+            edge_attr = edge_attr.unsqueeze(-1)  # 变成 [num_edges, 1]
+            if self.use_edge_embed:
+                edge_attr = self.edge_embed(edge_attr)
+
         # 通过所有卷积层
         for i in range(self.num_layers):
             x = self.conv_sublayers[i](x, lambda x: self.conv_layers[i](x, edge_index, edge_attr))
