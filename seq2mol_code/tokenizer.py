@@ -45,8 +45,10 @@ def build_tokenizer_from_vocab(vocab_path, save_dir):
     return wrapped_tokenizer
 
 if __name__ == "__main__":
-    vocab_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/h_nmr/vocab/vocab.tgt"
-    save_dir = "./tokenizer/tgt_tokenizer"
+    vocab_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/code/seq2mol_code/seqGraph2mol_code/tokenizer/vocab.src"
+    save_dir = os.path.join(os.path.dirname(vocab_path),"src_tokenizer")
+    print(save_dir)
+    # save_dir = "./tokenizer/tgt_tokenizer"
 
     # vocab_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/h_nmr/vocab/vocab.src"
     # save_dir = "./tokenizer/src_tokenizer"

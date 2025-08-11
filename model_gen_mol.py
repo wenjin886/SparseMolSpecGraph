@@ -478,8 +478,9 @@ class NMR2MolGenerator(pl.LightningModule):
                                 in_node_dim=d_model,
                                 # mult_embed_dim=mult_embed_dim, nH_embed_dim=nH_embed_dim, c_w_embed_dim=c_w_embed_dim,
                                 num_layers=num_layers, num_heads=num_heads, edge_dim=edge_dim, dropout=graph_dropout)
-
+        
         spec_embed_dim = self.graph_encoder.in_node_dim
+        self.nmr_pe = PositionalEncoding(spec_embed_dim, dropout=dropout)
         # self.spec_embed_proj = nn.Linear(spec_embed_dim, d_model)
         
         self.use_formula = use_formula
@@ -517,10 +518,11 @@ class NMR2MolGenerator(pl.LightningModule):
         node_embeddings = node_embeddings.float()  # Ensure float dtype
         src_embed, src_mask = self._get_spec_embed(data.batch, node_embeddings) # spec_embed: (batch_size, max_nodes, in_node_dim)
         # src_embed = self.spec_embed_proj(src_embed) # (batch_size, max_nodes, d_model)
+        src_embed = self.nmr_pe(src_embed)
 
         if self.use_formula:
             src_embed, src_mask = self.spec_formula_encoder(src_embed, src_mask, padding_formula_ids, padding_formula_att_mask)
-
+        
         return src_embed, src_mask
     
     def forward(self, data, padding_smiles_ids, padding_smiles_masks, padding_formula_ids=None, padding_formula_att_mask=None):
@@ -639,9 +641,9 @@ class NMR2MolGenerator(pl.LightningModule):
 
         batch_size = len(batch.id)
         # 提取目标：batch.masked_node_target 是 dict of tensors
-        self.log("val_loss", smiles_pred_loss, batch_size=batch_size)
-        self.log("val_token_acc", token_acc, batch_size=batch_size)
-        self.log("val_acc", acc, batch_size=batch_size)
+        self.log("val_loss", smiles_pred_loss, batch_size=batch_size, prog_bar=True)
+        self.log("val_token_acc", token_acc, batch_size=batch_size, prog_bar=True)
+        self.log("val_acc", acc, batch_size=batch_size, prog_bar=True)
         return smiles_pred_loss
     
     def test_step(self, batch, batch_idx):

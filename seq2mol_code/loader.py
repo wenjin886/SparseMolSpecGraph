@@ -48,6 +48,28 @@ def create_nmr2mol_dataloader(dataset, batch_size, shuffle=True, num_workers=4):
         collate_fn=collate_fn
     )
 
+class NMR2MolGraphDataset(torch.utils.data.Dataset):
+    def __init__(self, src_data, tgt_data, src_tokenizer, tgt_tokenizer):
+        
+        with open(src_data, 'r') as f:
+            self.src_data = f.readlines()
+            self.src_data = [line.strip() for line in self.src_data]
+        
+        with open(tgt_data, 'r') as f:
+            self.tgt_data = f.readlines()
+            self.tgt_data = [line.strip() for line in self.tgt_data]
+        
+        self.src_tokenizer = src_tokenizer
+        self.tgt_tokenizer = tgt_tokenizer
+
+    def __len__(self):
+        return len(self.tgt_data)
+    
+    def __getitem__(self, idx):
+        src_ids = self.src_tokenizer.encode(self.src_data[idx])
+        tgt_ids = self.tgt_tokenizer.encode(self.tgt_data[idx])
+        return {"src_ids": src_ids, "tgt_ids": tgt_ids}
+
 if __name__ == "__main__":
     src_data = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/h_nmr/data/src-val.txt"
     tgt_data = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/h_nmr/data/tgt-val.txt"

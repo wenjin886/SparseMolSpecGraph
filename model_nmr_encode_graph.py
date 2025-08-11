@@ -78,17 +78,20 @@ class NodeFeatureEmbedding(nn.Module):
                                   nn.SiLU(),
                                   nn.Linear(feature_dim*2, feature_dim))
 
-       
-    def forward(self, centroid, width, nH, multiplet):
-        """
-        Inputs:
-          - centroid, width, nH: [N, 1] float
-          - multiplet: [N] long (class index)
-        """
+    def embed_each_feature(self, centroid, width, nH, multiplet):
         mult_vec = self.mult_embed(multiplet)               
         nH_vec = self.nH_embed(nH)
         cen_vec = self.centroid_embed(centroid.unsqueeze(-1))
         wid_vec = self.width_embed(width.unsqueeze(-1))
+        return cen_vec, wid_vec, nH_vec,  mult_vec
+
+    def forward(self, centroid, width, nH, multiplet):
+        """
+        Inputs:
+          - centroid, width, nH: [N, 1] float (N: num_nodes)
+          - multiplet: [N] long (class index)
+        """
+        cen_vec, wid_vec, nH_vec,  mult_vec = self.embed_each_feature(centroid, width, nH, multiplet)
         x = torch.stack([cen_vec, wid_vec, nH_vec,  mult_vec], dim=1)  # [N, n_features, feature_dim]
 
         feature_w = F.softmax(self.feature_w(x), dim=1) # [N, 4, 1]
@@ -107,6 +110,7 @@ class NMRGraphEncoder(nn.Module):
         self.hidden_node_dim = hidden_node_dim
         self.num_layers = num_layers
         
+        self.use_edge = True
         if edge_dim is None:
             self.use_edge = False
             edge_dim = None

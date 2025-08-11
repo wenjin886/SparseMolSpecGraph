@@ -181,8 +181,58 @@ echo "Training..."
 #     --spec_formula_encoder_head 8 \
 #     --spec_formula_encoder_layer 4 \
 
+# python train_gen_mol.py \
+#     --exp_name hnmr_graph2smi_d512_lr2_higernodedim_2conv_e32_nodeff \
+#     --exp_save_path ../exp/exp_hnmr \
+#     --dataset_path ../Dataset/h_nmr/train_val_test_set_nomap_f_s_ids \
+#     --smiles_tokenizer_path ../Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json \
+#     --wandb_project NMR-Graph \
+#     --spec_type h_nmr \
+#     --label_type origin \
+#     --dataset_info_path ../Dataset/h_nmr/h_nmr.json \
+#     --max_epochs 500 \
+#     --batch_size 512 \
+#     --lr 2 \
+#     --warm_up_step 8000 \
+#     --num_heads 8 \
+#     --num_layers 2 \
+#     --edge_dim 32 \
+#     --d_model 512 \
+#     --d_ff 2048 \
+#     --use_formula \
+#     --spec_formula_encoder_head 8 \
+#     --spec_formula_encoder_layer 4 \
+#     --monitor val_acc \
+#     --monitor_mode max \
+#     # --code_test
+
+# python train_gen_mol.py \
+#     --exp_name 0_graphnodeembedpe_tfenc_gensmi \
+#     --exp_save_path ../exp/exp_hnmr \
+#     --dataset_path ../Dataset/h_nmr/train_val_test_set_nomap_f_s_ids \
+#     --smiles_tokenizer_path ../Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json \
+#     --wandb_project NMR-Graph \
+#     --spec_type h_nmr \
+#     --label_type origin \
+#     --dataset_info_path ../Dataset/h_nmr/h_nmr.json \
+#     --max_epochs 500 \
+#     --lr 2 \
+#     --warm_up_step 8000 \
+#     --edge_dim 32 \
+#     --d_model 512 \
+#     --d_ff 2048 \
+#     --use_formula \
+#     --spec_formula_encoder_head 8 \
+#     --spec_formula_encoder_layer 4 \
+#     --monitor val_acc \
+#     --monitor_mode max \
+#     --batch_size 512 \
+#     # --code_test
+#     # --num_heads 8 \
+#     # --num_layers 2 \
+
 python train_gen_mol.py \
-    --exp_name hnmr_graph2smi_d512_lr2_higernodedim_e32_nodeff \
+    --exp_name 1_graphencpe_gensmi \
     --exp_save_path ../exp/exp_hnmr \
     --dataset_path ../Dataset/h_nmr/train_val_test_set_nomap_f_s_ids \
     --smiles_tokenizer_path ../Dataset/h_nmr/smiles_tokenizer_fast/tokenizer.json \
@@ -191,11 +241,8 @@ python train_gen_mol.py \
     --label_type origin \
     --dataset_info_path ../Dataset/h_nmr/h_nmr.json \
     --max_epochs 500 \
-    --batch_size 512 \
     --lr 2 \
     --warm_up_step 8000 \
-    --num_heads 8 \
-    --num_layers 4 \
     --edge_dim 32 \
     --d_model 512 \
     --d_ff 2048 \
@@ -204,7 +251,11 @@ python train_gen_mol.py \
     --spec_formula_encoder_layer 4 \
     --monitor val_acc \
     --monitor_mode max \
+    --num_heads 8 \
+    --num_layers 4 \
+    --batch_size 512 \
     # --code_test
+    
 
 
 

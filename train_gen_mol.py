@@ -18,6 +18,7 @@ import random
 from tqdm import tqdm
 
 from model_gen_mol import NMR2MolGenerator, pad_str_ids
+from model_graphembed_tfencoder import NMR2MolGenerator as NMR2MolGenerator_tfenc
 
 def get_formatted_exp_name(exp_name, resume=False):
     formatted_time = datetime.now().strftime("%H-%M-%d-%m-%Y")
@@ -90,6 +91,7 @@ def main(args):
             print(f"lable num | MULTIPLETS: {len(MULTIPLETS)} | NUM_H: {len(NUM_H)}")
             print(f"edge dim: {args.edge_dim} ({type(args.edge_dim)})")
             model = NMR2MolGenerator(
+            # model = NMR2MolGenerator_tfenc(
                         mult_class_num=len(MULTIPLETS), 
                         nH_class_num=len(NUM_H), 
                         smiles_tokenizer_path=args.smiles_tokenizer_path,
@@ -120,6 +122,7 @@ def main(args):
     if args.code_test:
         wandb_logger = None
         fast_dev_run = 2
+        limit_val_batches, limit_test_batches = 0, 0
         print(model)
     else:
         wandb_logger = WandbLogger(
@@ -129,6 +132,7 @@ def main(args):
                 )
         wandb_logger.experiment.config.update({"model_arch": str(model)})
         fast_dev_run = False
+        limit_val_batches, limit_test_batches = 1.0, 1.0
        
 
     if device == torch.device("cuda"):
@@ -164,6 +168,8 @@ def main(args):
         max_epochs=args.max_epochs,
         logger=wandb_logger,
         fast_dev_run=fast_dev_run,
+        limit_val_batches=limit_val_batches,
+        limit_test_batches=limit_test_batches,
         callbacks=callbacks
     )
 
@@ -200,7 +206,8 @@ def main(args):
     
     # 在code_test模式下直接测试，不使用checkpoint
     if args.code_test:
-        trainer.test(ckpt_path='last', dataloaders=test_dataloader)
+        # trainer.test(ckpt_path='last', dataloaders=test_dataloader)
+        pass
     else:
         # 正常模式下使用最佳checkpoint测试
         trainer.test(ckpt_path="best", dataloaders=test_dataloader)
