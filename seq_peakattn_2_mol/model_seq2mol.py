@@ -259,6 +259,7 @@ class NMRPeakPatchFormulaEncoder(nn.Module):
     def __init__(self, 
                  src_vocab_size,
                  d_model=512, d_ff=2048, 
+                 peak_attn_layer=4,
                  encoder_head=8, encoder_layer=4,
                  dropout=0.1, 
                  ):
@@ -268,11 +269,13 @@ class NMRPeakPatchFormulaEncoder(nn.Module):
         
         c = copy.deepcopy
         pe = PositionalEncoding(d_model, dropout=dropout)
-        self.src_embed = nn.Sequential(Embeddings(d_model=d_model, vocab=self.src_vocab_size), c(pe))
+        self.src_embed = nn.Sequential(Embeddings(d_model=d_model, vocab=self.src_vocab_size))
+        self.peak_feature_pe = c(pe)
+        self.src_pe = c(pe)
 
         encoder_attn = MultiHeadedAttention(h=encoder_head,d_model=d_model)
         ff = PositionwiseFeedForward(d_model=d_model, d_ff=d_ff, dropout=dropout)
-        self.peak_encoder = Encoder(EncoderLayer(d_model, c(encoder_attn),c(ff), dropout), N=4)
+        self.peak_encoder = Encoder(EncoderLayer(d_model, c(encoder_attn),c(ff), dropout), N=peak_attn_layer)
         self.peak_token = nn.Parameter(torch.randn(1, 1, d_model))
         self.spec_formula_encoder = Encoder(EncoderLayer(d_model, c(encoder_attn),c(ff), dropout), N=encoder_layer)
 
@@ -297,25 +300,38 @@ class NMRPeakPatchFormulaEncoder(nn.Module):
         formula_embed = self.src_embed(formula_ids)
         if len(formula_mask.shape) == 2:
             formula_mask = formula_mask.unsqueeze(1)
+        # print("formula_embed", formula_embed.shape)
         
         peaks_ = peaks_ids.reshape(-1, peaks_ids.shape[-1]) # (B*N_peaks, L_peak)
-        peaks_embed = self.src_embed(peaks_) # (B*N_peaks, L_peak, D)
+        peaks_embed = self.peak_feature_pe(self.src_embed(peaks_)) # (B*N_peaks, L_peak, D)
         
         peak_tokens = self.peak_token.expand(peaks_embed.shape[0], -1, -1)
+        # print("peak_tokens", peak_tokens.shape)
         peaks_embed_with_peak_token = torch.cat([peak_tokens, peaks_embed], dim=1) # (B*N_peaks, L_peak+1, D)
-        peaks_mask_with_peak_token = torch.cat([torch.ones(peaks_embed.shape[0], 1), peaks_mask], dim=1).unsqueeze(1) # (B*N_peaks, 1, L_peak+1)
+        # print("peaks_embed_with_peak_token", peaks_embed_with_peak_token.shape)
+        peaks_mask_with_peak_token = torch.cat(
+            [torch.ones(peaks_embed.shape[0], 1, device=peaks_mask.device), 
+             peaks_mask.view(-1, peaks_mask.shape[-1])], 
+             dim=1).unsqueeze(1) # (B*N_peaks, 1, L_peak+1)
 
         peaks_embed_with_peak_token = self.peak_encoder(peaks_embed_with_peak_token, peaks_mask_with_peak_token) # (B*N_peaks, L_peak+1, D)
         peaks_embed = peaks_embed_with_peak_token[:, 0, :] # (B*N_peaks, D)
         peaks_embed = peaks_embed.reshape(formula_embed.shape[0], -1, peaks_embed.shape[-1]) # (B, N_peaks, D)
-        global_peaks_mask = torch.all(peaks_mask == 0, dim=-1).unsqueeze(1) # (B, 1, N_peaks)
+        is_all_zero_row = torch.all(peaks_ids == 0, dim=-1)
+        global_peaks_mask = (~is_all_zero_row).int().unsqueeze(1) # (B, 1, N_peaks)
+        # global_peaks_mask = torch.all(peaks_mask == 0, dim=-1).unsqueeze(1) # (B, 1, N_peaks)
+        # print("peaks_ids")
+        # print(peaks_ids)
+        # print("global_peaks_mask")
+        # print(global_peaks_mask)
 
-        src_embed = torch.cat([formula_embed, peaks_embed], dim=1) # (B, L_formula+N_peaks, D)
+        src_embed = self.src_pe(torch.cat([formula_embed, peaks_embed], dim=1)) # (B, L_formula+N_peaks, D)
         src_mask = torch.cat([formula_mask, global_peaks_mask], dim=2) # (B, 1,  L_formula+N_peaks)
+        # print("src_embed", src_embed.shape, "src_mask", src_mask.shape)
 
-        src_embed = self.spec_formula_encoder(src_embed, src_att_mask)
+        src_embed = self.spec_formula_encoder(src_embed, src_mask)
 
-        return src_embed, src_att_mask
+        return src_embed, src_mask
         
         
         
@@ -447,6 +463,7 @@ class NMRSeq2MolGenerator(pl.LightningModule):
                  src_vocab_size=None,
                  spec_formula_encoder_head=8, 
                  spec_formula_encoder_layer=4,
+                 peak_attn_encoder_layer=4,
                  # SMILES decoder
                  d_model=512, d_ff=2048, 
                  decoder_head=8, N_decoder_layer=4, dropout=0.1, 
@@ -468,6 +485,7 @@ class NMRSeq2MolGenerator(pl.LightningModule):
         
         self.spec_formula_encoder = NMRPeakPatchFormulaEncoder(src_vocab_size,
                                                       d_model=d_model, d_ff=d_ff, 
+                                                      peak_attn_layer=peak_attn_encoder_layer,
                                                       encoder_head=spec_formula_encoder_head, 
                                                       encoder_layer=spec_formula_encoder_layer,
                                                       dropout=dropout)
@@ -488,7 +506,7 @@ class NMRSeq2MolGenerator(pl.LightningModule):
     # def forward(self, padding_smiles_ids, padding_src_ids, padding_src_att_mask):
     def forward(self, formula_ids, formula_mask, peaks_ids, peaks_mask, padding_smiles_ids):
         
-        src_embed, src_mask = self.spec_formula_encoder(padding_src_ids, padding_src_att_mask)
+        src_embed, src_mask = self.spec_formula_encoder(formula_ids, formula_mask, peaks_ids, peaks_mask)
 
         
         decoder_output = self.smiles_decoder( input_ids=padding_smiles_ids,  encoder_hidden_states=src_embed, encoder_attention_mask=src_mask)
@@ -572,9 +590,14 @@ class NMRSeq2MolGenerator(pl.LightningModule):
         return correct_pred/len(preds) if total > 0 else 0.0
     
     def _step(self, batch, batch_idx):
-        logits = self(padding_smiles_ids=batch["tgt_ids"], 
-                      padding_src_ids=batch["src_ids"],
-                      padding_src_att_mask=batch["src_mask"],
+        logits = self(
+            
+                      formula_ids=batch["formula_ids"], 
+                      formula_mask=batch["formula_mask"], 
+                      peaks_ids=batch["peaks_ids"], 
+                      peaks_mask=batch["peaks_mask"], 
+                      padding_smiles_ids=batch["tgt_ids"], 
+                      
                     )
         return logits
 

@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
+import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerFast
 
@@ -41,7 +42,6 @@ class NMR2MolDataset(torch.utils.data.Dataset):
         peaks_list = []
         for i, idx in enumerate(peak_split_token_idx):
             if i == 0:
-                print(i, idx)
                 peaks_list.append(peaks_ids[:idx])
             else:
                 peaks_list.append(peaks_ids[peak_split_token_idx[i-1]+1:idx]) # already remove <eos>
@@ -51,19 +51,21 @@ class NMR2MolDataset(torch.utils.data.Dataset):
 
 def collate_fn(batch):
     
-    print("processing tgt")
-    tgt_ids = [torch.tensor(item["tgt_ids"], dtype=torch.long) for item in batch]
+    tgt_ids = [item["tgt_ids"] for item in batch]
     tgt_ids = pad_sequence(tgt_ids, batch_first=True, padding_value=0)
     tgt_mask = (tgt_ids != 0).float()
     
-    print("processing formula")
-    formula_ids = [torch.tensor(item["formula_ids"], dtype=torch.long) for item in batch]
+    formula_ids = [item["formula_ids"] for item in batch]
     formula_ids = pad_sequence(formula_ids, batch_first=True, padding_value=0)
     formula_mask = (formula_ids != 0).float()
 
 
-    print("processing peaks")
-    peaks_ids = [torch.tensor(item["peaks_ids"], dtype=torch.long) for item in batch]
+    peaks_ids = [item["peaks_ids"] for item in batch]
+    max_feat_dim = max([p.shape[-1] for p in peaks_ids])
+    # 对每个 tensor 补齐到相同特征维
+    peaks_ids = [F.pad(p, (0, max_feat_dim - p.shape[1])) for p in peaks_ids]
+    
+
     peaks_ids = pad_sequence(peaks_ids, batch_first=True, padding_value=0)
     peaks_mask = (peaks_ids != 0).float()
     
