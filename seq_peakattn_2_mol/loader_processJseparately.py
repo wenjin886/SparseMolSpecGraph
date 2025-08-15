@@ -4,11 +4,11 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from transformers import PreTrainedTokenizerFast
 import os
-
+from tqdm import tqdm 
 # 设置tokenizers并行化环境变量
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-H_NMR_INFO = {"max_num_J": 4}
+H_NMR_INFO = {"max_num_J": 6}
 
 def get_max_num_J(src_data):
     with open(src_data, 'r') as f:
@@ -17,13 +17,13 @@ def get_max_num_J(src_data):
     src_data = [line.strip() for line in src_data]
     
     max_num_J = 0
-    for src in src_data:
+    for src in tqdm(src_data, total=len(src_data)):
         NMR_seq = src.split("1HNMR")[1]
         peaks_list = NMR_seq.split("|")
         for peak in peaks_list:
             if "J" not in peak: continue
             J_list = peak.split("J")[1].strip().split(" ")
-            print(J_list)
+            # print(J_list)
             if len(J_list) > max_num_J:
                 max_num_J = len(J_list)
             
@@ -70,7 +70,7 @@ class NMR2MolDataset(torch.utils.data.Dataset):
 
         peaks_ids = src_ids[nmr_split_token_idx+1:]
         peak_split_token_idx = torch.where(peaks_ids == self.peak_split_token)[0]
-        peaks_list = []
+        peaks_list, J_values_list = [], []
         for i, idx in enumerate(peak_split_token_idx):
             if i == 0:
                 peak = peaks_ids[:idx]
@@ -78,20 +78,27 @@ class NMR2MolDataset(torch.utils.data.Dataset):
                 peak = peaks_ids[peak_split_token_idx[i-1]+1:idx] # already remove <eos>
             
             if self.J_split_token in peak:
+                J_idx = torch.where(peak == self.J_split_token)[0]
+                peak_wo_J, J_values = peak[:J_idx], peak[J_idx+1:]
                 # 计算J的个数
-                num_J = len(peak[torch.where(peak == self.J_split_token)[0]+1:])
+                num_J = len(J_values)
                 # print("num_J: ", num_J, peak[torch.where(peak == self.J_split_token)[0]+1:])
                 # 如果J的个数少于max_num_J，用0填充到max_num_J
                 if num_J < self.max_num_J:
                     padding_length = self.max_num_J - num_J
-                    peak = F.pad(peak, (0, padding_length), value=0)
+                    J_values = F.pad(J_values, (0, padding_length), value=0)
             else:
+                peak_wo_J = peak
                 # 如果没有J，直接填充到max_num_J
-                peak = F.pad(peak, (0, self.max_num_J), value=0)
-            peaks_list.append(peak)
-        peaks_ids = pad_sequence(peaks_list, batch_first=True, padding_value=0)
+                J_values = torch.zeros(self.max_num_J, dtype=torch.int64)
+            peaks_list.append(peak_wo_J)
+            J_values_list.append(J_values)
+        # peaks_ids = pad_sequence(peaks_list, batch_first=True, padding_value=0)
+        # J_values = pad_sequence(peaks_list, batch_first=True, padding_value=0)
+        peaks_ids = torch.stack(peaks_list)
+        J_values = torch.stack(J_values_list)
         
-        return {"tgt_ids": tgt_ids, "formula_ids": formula_ids,  "peaks_ids": peaks_ids, "peak_num":peaks_ids.shape[0]}
+        return {"tgt_ids": tgt_ids, "formula_ids": formula_ids,  "peaks_ids": peaks_ids, "peak_num":peaks_ids.shape[0], "J_values": J_values}
 
 def collate_fn(batch):
     
@@ -103,15 +110,17 @@ def collate_fn(batch):
     formula_ids = pad_sequence(formula_ids, batch_first=True, padding_value=0)
     formula_mask = (formula_ids != 0).float()
 
-
     peaks_ids = [item["peaks_ids"] for item in batch]
-    max_feat_dim = max([p.shape[-1] for p in peaks_ids])
-    # 对每个 tensor 补齐到相同特征维
-    peaks_ids = [F.pad(p, (0, max_feat_dim - p.shape[1])) for p in peaks_ids]
-    
-
+    # max_feat_dim = max([p.shape[-1] for p in peaks_ids])
+    # # 对每个 tensor 补齐到相同特征维
+    # peaks_ids = [F.pad(p, (0, max_feat_dim - p.shape[1])) for p in peaks_ids]
     peaks_ids = pad_sequence(peaks_ids, batch_first=True, padding_value=0)
     peaks_mask = (peaks_ids != 0).float()
+
+    J_values = [item["J_values"] for item in batch]
+    J_values = pad_sequence(J_values, batch_first=True, padding_value=0)
+
+    
     
     return {
         "tgt_ids": tgt_ids,
@@ -122,6 +131,8 @@ def collate_fn(batch):
 
         "peaks_ids": peaks_ids,
         "peaks_mask": peaks_mask,
+
+        "J_values": J_values
         
     }
 
@@ -138,10 +149,12 @@ def create_nmr2mol_dataloader(dataset, batch_size, shuffle=True, num_workers=4):
 
 
 if __name__ == "__main__":
-    src_data = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/h_nmr/data/src-val.txt"
+    # src_data = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/h_nmr/data/src-val.txt"
+    src_data = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/multimodal-spectroscopic-dataset/runs/runs_new_onmt_w_formula/h_nmr/data/src-val.txt"
     # max_num_J = get_max_num_J(src_data)
     # print(max_num_J)
-    tgt_data = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/h_nmr/data/tgt-val.txt"
+    # tgt_data = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/h_nmr/data/tgt-val.txt"
+    tgt_data = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/multimodal-spectroscopic-dataset/runs/runs_new_onmt_w_formula/h_nmr/data/tgt-val.txt"
     src_tokenizer = PreTrainedTokenizerFast(tokenizer_file="../seq2mol_code/tokenizer/src_tokenizer/nmr_formula_tokenizer_fast/tokenizer.json")
     tgt_tokenizer = PreTrainedTokenizerFast(tokenizer_file="../seq2mol_code/tokenizer/tgt_tokenizer/smiles_tokenizer_fast/tokenizer.json")
     dataset = NMR2MolDataset(src_data, tgt_data, src_tokenizer, tgt_tokenizer)
