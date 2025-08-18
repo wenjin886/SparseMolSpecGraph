@@ -94,7 +94,12 @@ class BertSelfAttention(nn.Module):
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
         if attention_mask is not None:
             # Apply the attention mask is (precomputed for all layers in BertModel forward() function)
-            attention_scores = attention_scores + attention_mask
+            # attention_scores = attention_scores + attention_mask
+
+            assert len(attention_mask.shape)==3 and attention_mask.shape[1] == 1, f"Please check attention mask (shape: {attention_mask.shape})."
+            attention_mask = attention_mask.unsqueeze(1)
+            attention_scores = attention_scores.masked_fill(attention_mask == 0, -1e4)
+            
         if rel_pos is not None:
             attention_scores = attention_scores + rel_pos
 
@@ -196,10 +201,13 @@ class BertSelfOutput(nn.Module):
         return hidden_states
 
 class BertAttention(nn.Module):
-    def __init__(self, hidden_size, num_attention_heads, output_attentions, attention_probs_dropout_prob):
+    def __init__(self, hidden_size, 
+                 num_attention_heads, output_attentions, attention_probs_dropout_prob,
+                 layer_norm_eps, hidden_dropout_prob
+                ):
         super(BertAttention, self).__init__()
         self.self = BertSelfAttention(hidden_size, num_attention_heads, output_attentions, attention_probs_dropout_prob)
-        self.output = BertSelfOutput(hidden_size, num_attention_heads, output_attentions, attention_probs_dropout_prob)
+        self.output = BertSelfOutput(hidden_size, layer_norm_eps, hidden_dropout_prob)
 
     def forward(self, hidden_states, attention_mask=None, encoder_hidden_states=None, 
                 split_lengths=None, rel_pos=None):
@@ -213,11 +221,16 @@ class BertAttention(nn.Module):
 
 
 class BertLayer(nn.Module):
-    def __init__(self, hidden_size, num_attention_heads, output_attentions, attention_probs_dropout_prob):
+    def __init__(self, hidden_size, 
+                 num_attention_heads, output_attentions, attention_probs_dropout_prob,
+                 intermediate_size, layer_norm_eps, hidden_dropout_prob
+                 ):
         super(BertLayer, self).__init__()
-        self.attention = BertAttention(hidden_size, num_attention_heads, output_attentions, attention_probs_dropout_prob)
-        # self.intermediate = BertIntermediate(hidden_size, num_attention_heads, output_attentions, attention_probs_dropout_prob)
-        # self.output = BertOutput(hidden_size, num_attention_heads, output_attentions, attention_probs_dropout_prob)
+        self.attention = BertAttention(hidden_size, num_attention_heads, output_attentions, attention_probs_dropout_prob,
+                                       layer_norm_eps, hidden_dropout_prob
+                                      )
+        self.intermediate = BertIntermediate(hidden_size, intermediate_size)
+        self.output = BertOutput(intermediate_size, hidden_size, layer_norm_eps, hidden_dropout_prob)
 
     def forward(self, hidden_states, attention_mask=None, split_lengths=None, rel_pos=None):
         self_attention_outputs = self.attention(

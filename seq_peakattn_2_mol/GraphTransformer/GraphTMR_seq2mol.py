@@ -41,13 +41,16 @@ class GraphAggregation(BertSelfAttention):
 class GraphBertEncoder(nn.Module):
     def __init__(self, output_attentions, output_hidden_states, 
                  num_hidden_layers, hidden_size, num_attention_heads, 
-                 attention_probs_dropout_prob):
+                 attention_probs_dropout_prob,
+                 intermediate_size, layer_norm_eps, hidden_dropout_prob
+                 ):
         super().__init__()
 
         self.output_attentions = output_attentions
         self.output_hidden_states = output_hidden_states
         c = copy.deepcopy
-        bert_layer = BertLayer(hidden_size, num_attention_heads, output_attentions, attention_probs_dropout_prob)
+        bert_layer = BertLayer(hidden_size, num_attention_heads, output_attentions, attention_probs_dropout_prob,
+                               intermediate_size, layer_norm_eps, hidden_dropout_prob)
         self.layer = nn.ModuleList([c(bert_layer) for _ in range(num_hidden_layers)])
 
         self.graph_attention = GraphAggregation(hidden_size, num_attention_heads, output_attentions, attention_probs_dropout_prob)
@@ -59,17 +62,23 @@ class GraphBertEncoder(nn.Module):
                 node_rel_pos=None,
                 rel_pos=None):
         """
-        hidden_states: (B*N_peaks, L_peak, D)
-        attention_mask: (B*N_peaks, L_peak)
-        node_mask: (B, N_peaks, N_peaks) --> N_peaks = subgraph_node_num
+        hidden_states: (B*N_peaks, 1+L_peak, D)
+        attention_mask: (B*N_peaks, 1+L_peak)
+        node_mask: (B, 1, N_peaks)
         
         """
+        peak_attention_mask = attention_mask.unsqueeze(1) # (B*N_peaks, 1, 1+L_peak)
 
         all_hidden_states = ()
         all_attentions = ()
 
-        all_nodes_num, seq_length, emb_dim = hidden_states.shape
-        batch_size, _, _, subgraph_node_num = node_mask.shape
+        all_nodes_num, seq_length, emb_dim = hidden_states.shape # seq_length=1+L_peak
+        # batch_size, _, _, subgraph_node_num = node_mask.shape
+        # print("node_mask", node_mask.shape)
+        batch_size,  subgraph_node_num = node_mask.shape
+        # print(node_mask)
+
+        
 
         for i, layer_module in enumerate(self.layer):
             if self.output_hidden_states:
@@ -78,20 +87,25 @@ class GraphBertEncoder(nn.Module):
             if i > 0:
 
                 hidden_states = hidden_states.view(batch_size, subgraph_node_num, seq_length, emb_dim)  # B SN L D
-                cls_emb = hidden_states[:, :, 1].clone()  # B SN D
-                station_emb = self.graph_attention(hidden_states=cls_emb, attention_mask=node_mask,
-                                                   rel_pos=node_rel_pos)  # B D
+                cls_emb = hidden_states[:, :, 1].clone()  # B SN D （每个peak的第一个token是[CLS], 在tokenzier中已经加好了; 每个节点序列自己的汇总向量，用来表征该节点的“局部/自身”信息）
+                station_emb = self.graph_attention(hidden_states=cls_emb, attention_mask=node_mask.unsqueeze(1),
+                                                   rel_pos=node_rel_pos)  # B D (station（位置0）: 额外插入的“聚合”槽位，不代表某个具体token；它用邻接掩码和相对位置从子图邻居里聚合信息，然后把聚合结果写回到每个子图的“主节点”的位置0，作为后续层的上下文注入)
 
                 # update the station in the query/key
                 hidden_states[:, 0, 0] = station_emb
                 hidden_states = hidden_states.view(all_nodes_num, seq_length, emb_dim)
 
-                layer_outputs = layer_module(hidden_states, attention_mask=attention_mask, rel_pos=rel_pos)
+                layer_outputs = layer_module(hidden_states, attention_mask=peak_attention_mask, rel_pos=rel_pos)
 
             else:
-                temp_attention_mask = attention_mask.clone()
-                temp_attention_mask[::subgraph_node_num, :, :, 0] = -10000.0
-                layer_outputs = layer_module(hidden_states, attention_mask=temp_attention_mask, rel_pos=rel_pos)
+                # temp_attention_mask = attention_mask.clone()
+                # temp_attention_mask[::subgraph_node_num, :, :, 0] = -10000.0
+                # layer_outputs = layer_module(hidden_states, attention_mask=temp_attention_mask, rel_pos=rel_pos)
+                # print("hidden_states", hidden_states.shape)
+                # print("peak_attention_mask", peak_attention_mask.shape)
+                # print(peak_attention_mask)
+                layer_outputs = layer_module(hidden_states, attention_mask=peak_attention_mask, rel_pos=rel_pos)
+                
 
             hidden_states = layer_outputs[0]
 
@@ -112,12 +126,27 @@ class GraphBertEncoder(nn.Module):
 
 
 class GraphFormers(nn.Module):
-    def __init__(self, vocab_size, hidden_size, max_position_embeddings, type_vocab_size, layer_norm_eps, hidden_dropout_prob,
-                 output_attentions, output_hidden_states, num_hidden_layers, num_attention_heads, attention_probs_dropout_prob,
-                 rel_pos_bins, max_rel_pos):
+    def __init__(self, vocab_size, rel_pos_bins, max_rel_pos,
+                 hidden_size=512, fix_word_embedding=False, max_position_embeddings=5000, type_vocab_size=0, 
+                 layer_norm_eps=1e-6, hidden_dropout_prob=0.1,
+                 output_attentions=False, output_hidden_states=False,  
+                 num_attention_heads=8, num_hidden_layers=4,
+                 attention_probs_dropout_prob=0.1,
+                 intermediate_size=2048,
+                 ):
+        """
+        output_attentions, output_hidden_states: True when debug; False otherwise to save memory
+        """
         super(GraphFormers, self).__init__()
-        self.embeddings = BertEmbeddings(vocab_size, hidden_size, max_position_embeddings, type_vocab_size, layer_norm_eps, hidden_dropout_prob)
-        self.encoder = GraphBertEncoder(output_attentions, output_hidden_states, num_hidden_layers, hidden_size, num_attention_heads, attention_probs_dropout_prob)
+        self.embeddings = BertEmbeddings(vocab_size, hidden_size, 
+                                         fix_word_embedding,
+                                         max_position_embeddings, type_vocab_size, 
+                                         layer_norm_eps, hidden_dropout_prob)
+        self.encoder = GraphBertEncoder(output_attentions, output_hidden_states, 
+                                        num_hidden_layers, hidden_size, num_attention_heads, 
+                                        attention_probs_dropout_prob,
+                                        intermediate_size, layer_norm_eps, hidden_dropout_prob
+                                        )
         self.rel_pos_bins = rel_pos_bins
         self.max_rel_pos = max_rel_pos
         if self.rel_pos_bins > 0:
@@ -129,25 +158,40 @@ class GraphFormers(nn.Module):
 
     def forward(self,
                 input_ids,
-                attention_mask,
-                neighbor_mask=None):
+                attention_mask
+                ):
+                # neighbor_mask=None):
         """
-        input_ids: (B*N_peaks, L_peak) --> all_nodes_num: B*N_peaks, seq_length: L_peak
-        attention_mask: (B*N_peaks, L_peak)
-        neighbor_mask: (B, N_peaks, N_peaks): mask padding peaks
+        input_ids: (B, N_peaks, L_peak) --> all_nodes_num: B*N_peaks, subgraph_node_num:N_peaks, seq_length: L_peak
+        attention_mask: (B, N_peaks, L_peak)
         """
-        all_nodes_num, seq_length = input_ids.shape
-        batch_size, subgraph_node_num = neighbor_mask.shape
+        # all_nodes_num, seq_length = input_ids.shape
+        # batch_size, subgraph_node_num = neighbor_mask.shape
 
+        batch_size, subgraph_node_num, seq_length = input_ids.shape
+        # print("input_ids", input_ids.shape)
+        # print(input_ids)
+        all_nodes_num = batch_size * subgraph_node_num
+        is_all_zero_row = torch.all(input_ids == 0, dim=-1)
+        node_mask = (~is_all_zero_row).int() # (B, N_peaks)
+
+        input_ids = input_ids.reshape(all_nodes_num, seq_length)
         embedding_output, position_ids = self.embeddings(input_ids=input_ids)
+        # print("attention_mask", attention_mask.shape)
+        # print(attention_mask)
+        attention_mask = attention_mask.reshape(all_nodes_num, seq_length)
 
         # Add station attention mask
-        station_mask = torch.zeros((all_nodes_num, 1), dtype=attention_mask.dtype, device=attention_mask.device) # 0: mask, 1: no mask
-        attention_mask = torch.cat([station_mask, attention_mask], dim=-1)  # N 1+L
-        attention_mask[::(subgraph_node_num), 0] = 1.0  # only use the station for main nodes
+        # station_mask = torch.zeros((all_nodes_num, 1), dtype=attention_mask.dtype, device=attention_mask.device) # 0: mask, 1: no mask
+        station_mask = torch.ones((all_nodes_num, 1), dtype=attention_mask.dtype, device=attention_mask.device) # 0: mask, 1: no mask
+        attention_mask = torch.cat([station_mask, attention_mask], dim=-1)  # N 1+L (i.e. ((B*N_peaks, L_peak+1)))
+        
+        # attention_mask[::(subgraph_node_num), 0] = 1.0  # only use the station for main nodes
 
-        node_mask = (1.0 - neighbor_mask[:, None, None, :]) * -10000.0
-        extended_attention_mask = (1.0 - attention_mask[:, None, None, :]) * -10000.0
+        # node_mask = (1.0 - neighbor_mask[:, None, None, :]) * -10000.0
+        # extended_attention_mask = (1.0 - attention_mask[:, None, None, :]) * -10000.0
+
+        
 
         if self.rel_pos_bins > 0:
             rel_pos_mat = position_ids.unsqueeze(-2) - position_ids.unsqueeze(-1)
@@ -189,12 +233,13 @@ class GraphFormers(nn.Module):
 
         encoder_outputs = self.encoder(
             embedding_output,
-            attention_mask=extended_attention_mask,
+            # attention_mask=extended_attention_mask,
+            attention_mask=attention_mask,
             node_mask=node_mask,
             node_rel_pos=node_rel_pos,
             rel_pos=rel_pos)
 
-        return encoder_outputs
+        return encoder_outputs, node_mask
 
 
 class NMR2MolDecoder(nn.Module, GenerationMixin):
@@ -271,16 +316,16 @@ class NMR2MolDecoder(nn.Module, GenerationMixin):
         return tgt_mask
 
 
-    def forward(self, input_ids, encoder_hidden_states, encoder_attention_mask, 
+    def forward(self, input_ids, tgt_attn_mask, encoder_hidden_states, encoder_attention_mask, 
                 use_cache=False, past_key_values=None, **kwargs):
         """
         input_ids: (B, T) smiles ids
         encoder_hidden_states: src
         encoder_attention_mask: src_mask
         """
-        smiles_att_mask = torch.where(input_ids == 0, False, True).float()
+        # smiles_att_mask = torch.where(input_ids == 0, False, True).float()
         for_generation = (use_cache or (past_key_values is not None)) or (input_ids.shape[1] == 1)
-        tgt_mask = self._get_tgt_mask(input_ids, smiles_att_mask, for_generation=for_generation)
+        tgt_mask = self._get_tgt_mask(input_ids, tgt_attn_mask, for_generation=for_generation)
         tgt_embed = self.smiles_embed(self.tgt)
 
         decoder_outputs = self.decoder(
@@ -319,8 +364,12 @@ class NMR2MolDecoder(nn.Module, GenerationMixin):
 class NMRSeq2MolGenerator(pl.LightningModule):
     def __init__(self, 
                  smiles_tokenizer_path,
-                 formula_vocab_size=None,
-                 nmr_vocab_size=None,
+                 formula_vocab_size,
+                 nmr_vocab_size,
+                 rel_pos_bins=32,
+                 max_rel_pos=32,
+                 spec_encoder_layer=4,
+                 spec_encoder_head=8,
                  spec_formula_encoder_head=8, 
                  spec_formula_encoder_layer=4,
                  peak_attn_encoder_layer=4,
@@ -340,30 +389,28 @@ class NMRSeq2MolGenerator(pl.LightningModule):
                                                         padding_side="right" )
         smiles_vocab_size = len(self.smiles_tokenizer.get_vocab())
         
-        
-        
-        
-        
         self.spec_encoder = GraphFormers(vocab_size=nmr_vocab_size,
-                                        hidden_size=d_model, 
-                                        max_position_embeddings=5000, 
-                                        type_vocab_size=0, 
-                                        layer_norm_eps=1e-12, 
-                                        hidden_dropout_prob=dropout,
-                                        output_attentions=False, 
-                                        output_hidden_states=False, 
-                                        num_hidden_layers=spec_formula_encoder_layer,
-                                        num_attention_heads=spec_formula_encoder_head, 
-                                        attention_probs_dropout_prob=dropout)
+                                         rel_pos_bins=rel_pos_bins, 
+                                         max_rel_pos=max_rel_pos,
+                                         hidden_size=d_model, 
+                                         max_position_embeddings=5000, 
+                                         type_vocab_size=0, 
+                                         layer_norm_eps=1e-12, 
+                                         hidden_dropout_prob=dropout,
+                                         output_attentions=False, 
+                                         output_hidden_states=False, 
+                                         num_hidden_layers=spec_encoder_layer,
+                                         num_attention_heads=spec_encoder_head, 
+                                         attention_probs_dropout_prob=dropout)
 
         # formula
         c = copy.deepcopy
         multi_att = MultiHeadedAttention(h=decoder_head, d_model=d_model, dropout=dropout)
         ff = PositionwiseFeedForward(d_model=d_model, d_ff=d_ff, dropout=dropout)
         self.formula_embeddings = Embeddings(d_model=d_model, vocab=formula_vocab_size)       
-        self.formula_encoder = Encoder(layer=EncoderLayer(d_model, c(multi_att), c(ff), dropout), N=N_decoder_layer)
+        self.formula_spec_encoder = Encoder(layer=EncoderLayer(d_model, c(multi_att), c(ff), dropout), N=N_decoder_layer)
        
-            
+        # tgt
         self.smiles_decoder = NMR2MolDecoder(smiles_vocab_size,
                                              d_model=d_model, d_ff=d_ff, 
                                              decoder_head=decoder_head, 
@@ -377,19 +424,31 @@ class NMRSeq2MolGenerator(pl.LightningModule):
 
     
     
-    # def forward(self, padding_smiles_ids, padding_src_ids, padding_src_att_mask):
-    def forward(self, formula_ids, formula_mask, peaks_ids, peaks_mask, padding_smiles_ids):
-        
-        spec_embed = self.spec_encoder(peaks_ids, peaks_mask)
+    def forward(self, formula_ids, formula_mask, peaks_ids, peaks_mask, tgt_ids, tgt_mask):
+        """
+        formula_ids: (B, L_formula)
+        formula_mask: (B, L_formula)
+        peaks_ids: (B, N_peaks, L_peak)
+        peaks_ids: (B, N_peaks, L_peak)
+        tgt_ids: (B, L_smiles)
+        tgt_mask: (B, L_smiles)
+        """
+        B, N_peaks, L_peak = peaks_ids.shape
+        enc_out, node_mask = self.spec_encoder(peaks_ids, peaks_mask) # (B*N_peaks, 1+L, D); (B, N_peaks)
+        spec_embed = enc_out[0]
+        spec_node_embed = spec_embed[:, 1, :].view(B, N_peaks, -1) # [CLS]; (B*N_peaks, 1, D) --> (B, N_peaks, D)
 
         formula_embed = self.formula_embeddings(formula_ids)
-        formula_embed = self.formula_encoder(formula_embed, formula_mask)
 
-        src_embed = torch.cat([spec_embed, formula_embed], dim=-1)
-        src_mask = torch.cat([peaks_mask, formula_mask], dim=-1)
-        src_embed = self.spec_encoder(src_embed, src_mask)
+        # print("formula", formula_embed.shape, formula_mask.shape)
+        # print("spec", spec_node_embed.shape, node_mask.shape)
+        src_embed = torch.cat([formula_embed, spec_node_embed], dim=1) # (B, N_formula+N_peaks, D)
+        src_mask = torch.cat([formula_mask, node_mask], dim=-1).unsqueeze(1) # (B, 1, N_formula+N_peaks)
+        # print("src_embed", src_embed.shape)
+        # print("src_mask", src_mask.shape)
+        src_embed = self.formula_spec_encoder(src_embed, src_mask)
   
-        decoder_output = self.smiles_decoder( input_ids=padding_smiles_ids,  encoder_hidden_states=src_embed, encoder_attention_mask=src_mask)
+        decoder_output = self.smiles_decoder(input_ids=tgt_ids, tgt_attn_mask=tgt_mask, encoder_hidden_states=src_embed, encoder_attention_mask=src_mask)
         # Extract logits from the decoder output
         if hasattr(decoder_output, 'logits'):
             logits = decoder_output.logits
@@ -476,8 +535,8 @@ class NMRSeq2MolGenerator(pl.LightningModule):
                       formula_mask=batch["formula_mask"], 
                       peaks_ids=batch["peaks_ids"], 
                       peaks_mask=batch["peaks_mask"], 
-                      padding_smiles_ids=batch["tgt_ids"], 
-                      
+                      tgt_ids=batch["tgt_ids"], 
+                      tgt_mask=batch["tgt_mask"]                      
                     )
         return logits
 
