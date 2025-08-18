@@ -24,9 +24,8 @@ class NMR2MolDataset(torch.utils.data.Dataset):
         self.formula_tokenizer = formula_tokenizer
         self.nmr_tokenizer = nmr_tokenizer
         
-        if "|" not in self.nmr_tokenizer.vocab:
-            raise ValueError("Token '|' not found in nmr_tokenizer")
-        self.peak_split_token = self.nmr_tokenizer.vocab["|"]
+        self.peak_sep_token = self.nmr_tokenizer.vocab["[SEP]"]
+        self.peak_cls_token = self.nmr_tokenizer.vocab["[CLS]"]
 
     def __len__(self):
         return len(self.tgt_data)
@@ -37,13 +36,16 @@ class NMR2MolDataset(torch.utils.data.Dataset):
         formula_ids = torch.tensor(self.formula_tokenizer.encode(self.formula_data[idx]))
 
         peaks_ids = torch.tensor(self.nmr_tokenizer.encode(self.nmr_data[idx]))
-        peak_split_token_idx = torch.where(peaks_ids == self.peak_split_token)[0]
+        peak_sep_token_idx = torch.where(peaks_ids == self.peak_sep_token)[0]
+        
         peaks_list = []
-        for i, idx in enumerate(peak_split_token_idx):
+        for i, idx in enumerate(peak_sep_token_idx):
             if i == 0:
-                peaks_list.append(peaks_ids[:idx])
+                peak_i = peaks_ids[:idx]
             else:
-                peaks_list.append(peaks_ids[peak_split_token_idx[i-1]+1:idx]) 
+                peak_i = peaks_ids[peak_sep_token_idx[i-1]+1:idx]
+            peaks_list.append(peak_i)
+
         peaks_ids = pad_sequence(peaks_list, batch_first=True, padding_value=0)
         
         return {"tgt_ids": tgt_ids, "formula_ids": formula_ids,  "peaks_ids": peaks_ids, "peak_num":peaks_ids.shape[0]}
@@ -100,8 +102,8 @@ if __name__ == "__main__":
     tgt_tokenizer = PreTrainedTokenizerFast(tokenizer_file="./tokenizers/smiles_tokenizer_fast/tokenizer.json")
     dataset = NMR2MolDataset(src_data, tgt_data, formula_tokenizer, nmr_tokenizer, tgt_tokenizer)
     print(dataset[0])
-    print('--------------------------------')
-    dataloader = create_nmr2mol_dataloader(dataset, batch_size=2, shuffle=False)
-    for batch in dataloader:
-        print(batch)
-        break
+    # print('--------------------------------')
+    # dataloader = create_nmr2mol_dataloader(dataset, batch_size=2, shuffle=False)
+    # for batch in dataloader:
+    #     print(batch)
+    #     break
