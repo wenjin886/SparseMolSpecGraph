@@ -26,7 +26,9 @@ class GraphAggregation(BertSelfAttention):
         self.output_attentions = False
 
     def forward(self, hidden_states, attention_mask=None, rel_pos=None):
-        query = self.query(hidden_states[:, :1])  # B 1 D
+        # query = self.query(hidden_states[:, :1])  # B 1 D
+        query = self.query(hidden_states)  # (B, N_peaks, D)
+        
         key = self.key(hidden_states)
         value = self.value(hidden_states)
         station_embed = self.multi_head_attention(query=query,
@@ -34,7 +36,7 @@ class GraphAggregation(BertSelfAttention):
                                                   value=value,
                                                   attention_mask=attention_mask,
                                                   rel_pos=rel_pos)[0]  # B 1 D
-        station_embed = station_embed.squeeze(1)
+        # station_embed = station_embed.squeeze(1)
 
         return station_embed
 
@@ -64,7 +66,7 @@ class GraphBertEncoder(nn.Module):
         """
         hidden_states: (B*N_peaks, 1+L_peak, D)
         attention_mask: (B*N_peaks, 1+L_peak)
-        node_mask: (B, 1, N_peaks)
+        node_mask: (B, N_peaks)
         
         """
         peak_attention_mask = attention_mask.unsqueeze(1) # (B*N_peaks, 1, 1+L_peak)
@@ -87,12 +89,15 @@ class GraphBertEncoder(nn.Module):
             if i > 0:
 
                 hidden_states = hidden_states.view(batch_size, subgraph_node_num, seq_length, emb_dim)  # B SN L D
-                cls_emb = hidden_states[:, :, 1].clone()  # B SN D （每个peak的第一个token是[CLS], 在tokenzier中已经加好了; 每个节点序列自己的汇总向量，用来表征该节点的“局部/自身”信息）
+                cls_emb = hidden_states[:, :, 1].clone()  # B SN D (i.e. (B, N_peaks, D))（每个peak的第一个token是[CLS], 在tokenzier中已经加好了; 每个节点序列自己的汇总向量，用来表征该节点的“局部/自身”信息）
+                # print("cls_emb", cls_emb.shape)
                 station_emb = self.graph_attention(hidden_states=cls_emb, attention_mask=node_mask.unsqueeze(1),
                                                    rel_pos=node_rel_pos)  # B D (station（位置0）: 额外插入的“聚合”槽位，不代表某个具体token；它用邻接掩码和相对位置从子图邻居里聚合信息，然后把聚合结果写回到每个子图的“主节点”的位置0，作为后续层的上下文注入)
 
                 # update the station in the query/key
-                hidden_states[:, 0, 0] = station_emb
+                # print("updated hidden shape", hidden_states[:, :, 0, :].shape, "station_emb", station_emb.shape)
+                # hidden_states[:, 0, 0] = station_emb
+                hidden_states[:, :, 0, :] = station_emb
                 hidden_states = hidden_states.view(all_nodes_num, seq_length, emb_dim)
 
                 layer_outputs = layer_module(hidden_states, attention_mask=peak_attention_mask, rel_pos=rel_pos)
