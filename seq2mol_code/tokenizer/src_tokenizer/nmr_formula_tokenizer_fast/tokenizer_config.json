@@ -1,7 +1,7 @@
 {
   "added_tokens_decoder": {
     "0": {
-      "content": "[UNK]",
+      "content": "[PAD]",
       "lstrip": false,
       "normalized": false,
       "rstrip": false,
@@ -25,7 +25,7 @@
       "special": true
     },
     "3": {
-      "content": "[PAD]",
+      "content": "[UNK]",
       "lstrip": false,
       "normalized": false,
       "rstrip": false,

@@ -5,7 +5,7 @@
   "added_tokens": [
     {
       "id": 0,
-      "content": "[UNK]",
+      "content": "[PAD]",
       "single_word": false,
       "lstrip": false,
       "rstrip": false,
@@ -32,7 +32,7 @@
     },
     {
       "id": 3,
-      "content": "[PAD]",
+      "content": "[UNK]",
       "single_word": false,
       "lstrip": false,
       "rstrip": false,
@@ -105,10 +105,10 @@
   "model": {
     "type": "WordLevel",
     "vocab": {
-      "[UNK]": 0,
+      "[PAD]": 0,
       "[BOS]": 1,
       "[EOS]": 2,
-      "[PAD]": 3,
+      "[UNK]": 3,
       "|": 4,
       "J": 5,
       "1H": 6,
@@ -3527,8 +3527,7 @@
       "37.21": 3419,
       "32.80": 3420,
       "28.23": 3421,
-      "36.90": 3422,
-      "36.59": 3423
+      "36.90": 3422
     },
     "unk_token": "[UNK]"
   }

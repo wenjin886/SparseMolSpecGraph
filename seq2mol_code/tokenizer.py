@@ -6,7 +6,7 @@ import os
 
 def build_vocab_with_special_tokens(vocab_path):
     # 指定特殊 token 顺序
-    special_tokens = [ "[UNK]", "[BOS]", "[EOS]", "[PAD]"]
+    special_tokens = [ "[PAD]", "[BOS]", "[EOS]", "[UNK]"]
     token2id = {tok: i for i, tok in enumerate(special_tokens)}
     next_id = len(special_tokens)
     with open(vocab_path, 'r', encoding='utf-8') as f:
@@ -17,7 +17,7 @@ def build_vocab_with_special_tokens(vocab_path):
                 next_id += 1
     return token2id
 
-def build_tokenizer_from_vocab(vocab_path, save_dir):
+def build_tokenizer_from_vocab(vocab_path, save_dir, filename):
     
     token2id = build_vocab_with_special_tokens(vocab_path)
     tokenizer = Tokenizer(models.WordLevel(token2id, unk_token="[UNK]"))
@@ -32,7 +32,7 @@ def build_tokenizer_from_vocab(vocab_path, save_dir):
             special_tokens=[("[BOS]", bos_token_id), ("[EOS]", eos_token_id)]
         )
 
-    tokenizer.save(f"{save_dir}/smiles_tokenizer.json")
+    tokenizer.save(f"{save_dir}/{filename}.json")
 
     wrapped_tokenizer = PreTrainedTokenizerFast(
         tokenizer_object=tokenizer,
@@ -41,17 +41,19 @@ def build_tokenizer_from_vocab(vocab_path, save_dir):
         bos_token="[BOS]",
         eos_token="[EOS]"
     )
-    wrapped_tokenizer.save_pretrained(f"{save_dir}/smiles_tokenizer_fast")
+    wrapped_tokenizer.save_pretrained(f"{save_dir}/{filename}_fast")
     return wrapped_tokenizer
 
 if __name__ == "__main__":
-    vocab_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/code/seq2mol_code/seqGraph2mol_code/tokenizer/vocab.src"
-    save_dir = os.path.join(os.path.dirname(vocab_path),"src_tokenizer")
-    print(save_dir)
-    # save_dir = "./tokenizer/tgt_tokenizer"
 
-    # vocab_path = "/Users/wuwj/Desktop/NMR-IR/multi-spectra/NMR-Graph/example_data/h_nmr/vocab/vocab.src"
-    # save_dir = "./tokenizer/src_tokenizer"
-
+    vocab_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/multimodal-spectroscopic-dataset/runs/runs_new_onmt_w_formula/h_nmr/data/vocab/vocab.tgt"
+    save_dir = "./tokenizer/tgt_tokenizer"
+    file_name = "smiles_tokenizer"
     os.makedirs(save_dir, exist_ok=True)
-    build_tokenizer_from_vocab(vocab_path, save_dir)
+    build_tokenizer_from_vocab(vocab_path, save_dir, file_name)
+
+    vocab_path = "/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/multimodal-spectroscopic-dataset/runs/runs_new_onmt_w_formula/h_nmr/data/vocab/vocab.src"
+    save_dir = "./tokenizer/src_tokenizer"
+    file_name = "nmr_formula_tokenizer"
+    os.makedirs(save_dir, exist_ok=True)
+    build_tokenizer_from_vocab(vocab_path, save_dir, file_name)
