@@ -45,7 +45,9 @@ def main(args):
        
         model = NMRSeq2MolGenerator(smiles_tokenizer_path=args.tgt_tokenizer_path,
                                     formula_vocab_size=len(formula_tokenizer),
-                                    nmr_vocab_size=len(nmr_tokenizer), 
+                                    nmr_vocab_size=len(nmr_tokenizer),
+                                    spec_node_type=args.spec_node_type, 
+                                    rel_pos_bins=args.rel_pos_bins, max_rel_pos=args.max_rel_pos,
                                     spec_encoder_head=args.spec_encoder_head,
                                     spec_encoder_layer=args.spec_encoder_layer,
                                     spec_formula_encoder_head=args.spec_formula_encoder_head, 
@@ -156,7 +158,7 @@ def main(args):
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument('--exp_name', type=str, required=True)
-    parser.add_argument('--exp_save_path', type=str, default='../../exp/nmr_graphtmr')
+    parser.add_argument('--exp_save_path', type=str, default='/rds/projects/c/chenlv-ai-and-chemistry/wuwj/NMR_MS/sparsespec2graph/exp/nmr_graphtmr')
     parser.add_argument('--resume', action='store_true')
     parser.add_argument('--checkpoint_path', type=str, default=None)
     parser.add_argument('--data_dir_path', type=str, required=True)
@@ -164,6 +166,9 @@ if __name__ == "__main__":
     parser.add_argument('--formula_tokenizer_path', type=str, required=True)
     parser.add_argument('--tgt_tokenizer_path', type=str, required=True)
 
+    parser.add_argument('--spec_node_type', type=str, default="cls",choices=['cls', 'station', 'concat'])
+    parser.add_argument('--rel_pos_bins', type=int, default=32)
+    parser.add_argument('--max_rel_pos', type=int, default=32)
     parser.add_argument('--spec_encoder_head', type=int, default=8)
     parser.add_argument('--spec_encoder_layer', type=int, default=4)
     parser.add_argument('--spec_formula_encoder_head', type=int, default=8)

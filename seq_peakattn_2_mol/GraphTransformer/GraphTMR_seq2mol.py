@@ -87,19 +87,20 @@ class GraphBertEncoder(nn.Module):
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             if i > 0:
-
+                # print(i)
                 hidden_states = hidden_states.view(batch_size, subgraph_node_num, seq_length, emb_dim)  # B SN L D
+                # print("hidden_states", hidden_states.shape)
                 cls_emb = hidden_states[:, :, 1].clone()  # B SN D (i.e. (B, N_peaks, D))（每个peak的第一个token是[CLS], 在tokenzier中已经加好了; 每个节点序列自己的汇总向量，用来表征该节点的“局部/自身”信息）
                 # print("cls_emb", cls_emb.shape)
                 station_emb = self.graph_attention(hidden_states=cls_emb, attention_mask=node_mask.unsqueeze(1),
                                                    rel_pos=node_rel_pos)  # B D (station（位置0）: 额外插入的“聚合”槽位，不代表某个具体token；它用邻接掩码和相对位置从子图邻居里聚合信息，然后把聚合结果写回到每个子图的“主节点”的位置0，作为后续层的上下文注入)
-
+                # print("station_emb", station_emb)
                 # update the station in the query/key
                 # print("updated hidden shape", hidden_states[:, :, 0, :].shape, "station_emb", station_emb.shape)
                 # hidden_states[:, 0, 0] = station_emb
                 hidden_states[:, :, 0, :] = station_emb
                 hidden_states = hidden_states.view(all_nodes_num, seq_length, emb_dim)
-
+                # print("hidden_states", hidden_states.shape)
                 layer_outputs = layer_module(hidden_states, attention_mask=peak_attention_mask, rel_pos=rel_pos)
 
             else:
@@ -230,6 +231,7 @@ class GraphFormers(nn.Module):
         else:
             node_rel_pos = None
             rel_pos = None
+        # print(node_rel_pos, rel_pos)
 
         # Add station_placeholder
         station_placeholder = torch.zeros(all_nodes_num, 1, embedding_output.size(-1)).type(
@@ -286,16 +288,16 @@ class NMR2MolDecoder(nn.Module, GenerationMixin):
         # Add _supports_cache_class for GenerationMixin compatibility
         self._supports_cache_class = False
 
-        self.__init_weights__()
+    #     self.__init_weights__()
     
-    def __init_weights__(self):
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_normal_(m.weight)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Embedding):
-                nn.init.xavier_normal_(m.weight)
+    # def __init_weights__(self):
+    #     for m in self.modules():
+    #         if isinstance(m, nn.Linear):
+    #             nn.init.xavier_normal_(m.weight)
+    #             if m.bias is not None:
+    #                 nn.init.constant_(m.bias, 0)
+    #         elif isinstance(m, nn.Embedding):
+    #             nn.init.xavier_normal_(m.weight)
     
     def _subsequent_mask(self, size):
         "Mask out subsequent positions."
@@ -375,6 +377,7 @@ class NMRSeq2MolGenerator(pl.LightningModule):
                  max_rel_pos=32,
                  spec_encoder_layer=4,
                  spec_encoder_head=8,
+                 spec_node_type="cls", # cls; station; concat
                  spec_formula_encoder_head=8, 
                  spec_formula_encoder_layer=4,
                  peak_attn_encoder_layer=4,
@@ -407,14 +410,19 @@ class NMRSeq2MolGenerator(pl.LightningModule):
                                          num_hidden_layers=spec_encoder_layer,
                                          num_attention_heads=spec_encoder_head, 
                                          attention_probs_dropout_prob=dropout)
+        self.spec_node_type = spec_node_type
+        if self.spec_node_type == "concat":
+            self.spec_node_proj = nn.Linear(2*d_model, d_model)
 
         # formula
-        c = copy.deepcopy
-        multi_att = MultiHeadedAttention(h=decoder_head, d_model=d_model, dropout=dropout)
-        ff = PositionwiseFeedForward(d_model=d_model, d_ff=d_ff, dropout=dropout)
-        self.formula_embeddings = Embeddings(d_model=d_model, vocab=formula_vocab_size)       
-        self.formula_spec_encoder = Encoder(layer=EncoderLayer(d_model, c(multi_att), c(ff), dropout), N=N_decoder_layer)
-       
+        self.spec_formula_encoder_layer = spec_formula_encoder_layer
+        if self.spec_formula_encoder_layer > 0:
+            c = copy.deepcopy
+            multi_att = MultiHeadedAttention(h=spec_formula_encoder_head, d_model=d_model, dropout=dropout)
+            ff = PositionwiseFeedForward(d_model=d_model, d_ff=d_ff, dropout=dropout)
+            self.formula_embeddings = Embeddings(d_model=d_model, vocab=formula_vocab_size)       
+            self.formula_spec_encoder = Encoder(layer=EncoderLayer(d_model, c(multi_att), c(ff), dropout), N=spec_formula_encoder_layer)
+        
         # tgt
         self.smiles_decoder = NMR2MolDecoder(smiles_vocab_size,
                                              d_model=d_model, d_ff=d_ff, 
@@ -427,6 +435,16 @@ class NMRSeq2MolGenerator(pl.LightningModule):
         self.lr = lr
         self.criterion = LabelSmoothing(size=smiles_vocab_size, padding_idx=0, smoothing=0.1)
 
+        self.__init_weights__()
+    
+    def __init_weights__(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Embedding):
+                nn.init.xavier_normal_(m.weight)
     
     
     def forward(self, formula_ids, formula_mask, peaks_ids, peaks_mask, tgt_ids, tgt_mask):
@@ -441,18 +459,31 @@ class NMRSeq2MolGenerator(pl.LightningModule):
         B, N_peaks, L_peak = peaks_ids.shape
         enc_out, node_mask = self.spec_encoder(peaks_ids, peaks_mask) # (B*N_peaks, 1+L, D); (B, N_peaks)
         spec_embed = enc_out[0]
-        spec_node_embed = spec_embed[:, 1, :].view(B, N_peaks, -1) # [CLS]; (B*N_peaks, 1, D) --> (B, N_peaks, D)
 
-        formula_embed = self.formula_embeddings(formula_ids)
+        if self.spec_node_type == "cls":
+            spec_node_embed = spec_embed[:, 1, :].view(B, N_peaks, -1) # [CLS]; (B*N_peaks, 1, D) --> (B, N_peaks, D)
+        elif self.spec_node_type == "station":
+            spec_node_embed = spec_embed[:, 0, :].view(B, N_peaks, -1) # station; (B*N_peaks, 1, D) --> (B, N_peaks, D)
+        elif self.spec_node_type == "concat":
+            station_embed = spec_embed[:, 0, :].view(B, N_peaks, -1)
+            cls_embed = spec_embed[:, 1, :].view(B, N_peaks, -1) 
+            spec_node_embed = torch.cat([station_embed, cls_embed], dim=-1) #--> (B, N_peaks, 2*D)
+            spec_node_embed = self.spec_node_proj(spec_node_embed)
 
-        # print("formula", formula_embed.shape, formula_mask.shape)
-        # print("spec", spec_node_embed.shape, node_mask.shape)
-        src_embed = torch.cat([formula_embed, spec_node_embed], dim=1) # (B, N_formula+N_peaks, D)
-        src_mask = torch.cat([formula_mask, node_mask], dim=-1).unsqueeze(1) # (B, 1, N_formula+N_peaks)
-        # print("src_embed", src_embed.shape)
-        # print("src_mask", src_mask.shape)
-        src_embed = self.formula_spec_encoder(src_embed, src_mask)
-  
+        if self.spec_formula_encoder_layer > 0:
+            formula_embed = self.formula_embeddings(formula_ids)
+
+            # print("formula", formula_embed.shape, formula_mask.shape)
+            # print("spec", spec_node_embed.shape, node_mask.shape)
+            src_embed = torch.cat([formula_embed, spec_node_embed], dim=1) # (B, N_formula+N_peaks, D)
+            src_mask = torch.cat([formula_mask, node_mask], dim=-1).unsqueeze(1) # (B, 1, N_formula+N_peaks)
+            # print("src_embed", src_embed.shape)
+            # print("src_mask", src_mask.shape)
+            src_embed = self.formula_spec_encoder(src_embed, src_mask)
+        else:
+            src_embed = spec_node_embed
+            src_mask = node_mask.unsqueeze(1)
+    
         decoder_output = self.smiles_decoder(input_ids=tgt_ids, tgt_attn_mask=tgt_mask, encoder_hidden_states=src_embed, encoder_attention_mask=src_mask)
         # Extract logits from the decoder output
         if hasattr(decoder_output, 'logits'):
