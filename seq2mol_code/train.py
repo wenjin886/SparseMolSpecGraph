@@ -43,6 +43,7 @@ def main(args):
     else:
         model = NMRSeq2MolGenerator(smiles_tokenizer_path=args.tgt_tokenizer_path,
                                     src_vocab_size=len(src_tokenizer.get_vocab()), 
+                                    use_formula=args.use_formula, nmr_bos_token_id=src_tokenizer.vocab["1HNMR"],
                                     spec_formula_encoder_head=args.spec_formula_encoder_head, 
                                     spec_formula_encoder_layer=args.spec_formula_encoder_layer,
                                     d_model=args.d_model, d_ff=args.d_ff, 
@@ -63,7 +64,7 @@ def main(args):
         wandb_logger = WandbLogger(
                     project=args.wandb_project,
                     name=exp_name,
-                    save_dir=args.exp_save_path
+                    save_dir=save_dirpath
                 )
         fast_dev_run = False
         
@@ -131,16 +132,17 @@ def main(args):
     val_dataloader = create_nmr2mol_dataloader(val_set, batch_size=args.batch_size, num_workers=17)
     test_dataloader = create_nmr2mol_dataloader(test_set, batch_size=args.batch_size, num_workers=17)
 
-    trainer.fit(model, train_dataloader, val_dataloader,
+    
+    if not args.code_test:
+        trainer.fit(model, train_dataloader, val_dataloader,
                 ckpt_path=args.checkpoint_path if args.resume else None
                 )
-    
-    # 在code_test模式下直接测试，不使用checkpoint
-    if args.code_test:
-        trainer.test(ckpt_path='last', dataloaders=test_dataloader)
-    else:
-        # 正常模式下使用最佳checkpoint测试
         trainer.test(ckpt_path="best", dataloaders=test_dataloader)
+    else:
+        trainer.fit(model, train_dataloader,
+                    ckpt_path=args.checkpoint_path if args.resume else None
+                    )
+
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -152,6 +154,7 @@ if __name__ == "__main__":
     parser.add_argument('--src_tokenizer_path', type=str, required=True)
     parser.add_argument('--tgt_tokenizer_path', type=str, required=True)
 
+    parser.add_argument('--use_formula', type=eval, default=True)
     parser.add_argument('--spec_formula_encoder_head', type=int, default=8)
     parser.add_argument('--spec_formula_encoder_layer', type=int, default=4)
     parser.add_argument('--d_model', type=int, default=512)

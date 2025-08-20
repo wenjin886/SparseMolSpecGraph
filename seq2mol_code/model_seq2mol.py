@@ -12,6 +12,7 @@ from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
 import math
 import copy
 import rdkit.Chem as Chem
+from torch.nn.utils.rnn import pad_sequence
 
 
 def pad_str_ids(str_ids_list, str_len, pad_token=0):
@@ -423,6 +424,7 @@ class NMRSeq2MolGenerator(pl.LightningModule):
     def __init__(self, 
                  smiles_tokenizer_path,
                  src_vocab_size=None,
+                 use_formula=True, nmr_bos_token_id=None,
                  spec_formula_encoder_head=8, 
                  spec_formula_encoder_layer=4,
                  # SMILES decoder
@@ -443,7 +445,11 @@ class NMRSeq2MolGenerator(pl.LightningModule):
         
         
         
-        
+        self.use_formula = use_formula
+        # print("use_formula", use_formula)
+        if not self.use_formula:
+            self.nmr_bos_token_id = nmr_bos_token_id
+
         self.spec_formula_encoder = NMRFormulaEncoder(src_vocab_size,
                                                       d_model=d_model, d_ff=d_ff, 
                                                       encoder_head=spec_formula_encoder_head, 
@@ -462,9 +468,38 @@ class NMRSeq2MolGenerator(pl.LightningModule):
         self.criterion = LabelSmoothing(size=smiles_vocab_size, padding_idx=0, smoothing=0.1)
 
     
-    
+    def get_nmr_src(self, padding_src_ids, padding_src_att_mask):
+        B, L = padding_src_ids.shape
+        new_ids = []
+        new_masks = []
+
+        for i in range(B):
+            row_ids = padding_src_ids[i]
+            row_mask = padding_src_att_mask[i]
+            
+            # 找到 nmr_bos_token_id 的位置（每行只有一个）
+            bos_pos = (row_ids == self.nmr_bos_token_id).nonzero(as_tuple=True)[0].item()
+            
+            # 从 bos_pos 开始截取
+            new_ids.append(row_ids[bos_pos:])
+            new_masks.append(row_mask[bos_pos:])
+
+        # 重新 pad（默认右侧补 0）
+        padding_src_ids = pad_sequence(new_ids, batch_first=True, padding_value=0)
+        padding_src_att_mask = pad_sequence(new_masks, batch_first=True, padding_value=0)
+        return padding_src_ids,padding_src_att_mask
     def forward(self, padding_smiles_ids, padding_src_ids, padding_src_att_mask):
-        
+        """
+        padding_src_ids: (B, L)
+        padding_src_att_mask: (B, L)
+        """
+        if not self.use_formula:
+            # print(padding_src_ids.shape, padding_src_att_mask.shape)
+            # print(padding_src_ids)
+            padding_src_ids, padding_src_att_mask = self.get_nmr_src(padding_src_ids, padding_src_att_mask)
+            # print(padding_src_ids.shape, padding_src_att_mask.shape)
+            # print(padding_src_ids)
+
         src_embed, src_mask = self.spec_formula_encoder(padding_src_ids, padding_src_att_mask)
 
         
